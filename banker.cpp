@@ -1,5 +1,5 @@
 #include "banker.h"
-#include <iostream>
+#include <bits/stdc++.h>
 using namespace std;
 
 void calculateNeed(vector<vector<int>> &need,
