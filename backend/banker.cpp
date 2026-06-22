@@ -1,38 +1,20 @@
 #include "banker.h"
-#include <bits/stdc++.h>
-using namespace std;
 
-void calculateNeed(vector<vector<int>> &need,
+void calculateNeed(vector<vector<int>>& need,
                    vector<vector<int>> max,
                    vector<vector<int>> alloc,
                    int p, int r)
 {
     for(int i = 0; i < p; i++)
-    {
         for(int j = 0; j < r; j++)
-        {
             need[i][j] = max[i][j] - alloc[i][j];
-        }
-    }
-}
-
-void printMatrix(vector<vector<int>> mat, int p, int r, string name)
-{
-    cout << "\n" << name << " Matrix:\n";
-    for(int i = 0; i < p; i++)
-    {
-        for(int j = 0; j < r; j++)
-        {
-            cout << mat[i][j] << " ";
-        }
-        cout << endl;
-    }
 }
 
 bool isSafe(vector<vector<int>> alloc,
             vector<vector<int>> max,
             vector<int> avail,
-            int p, int r)
+            int p, int r,
+            vector<int>& safeSeq)
 {
     vector<vector<int>> need(p, vector<int>(r));
     calculateNeed(need, max, alloc, p, r);
@@ -66,6 +48,7 @@ bool isSafe(vector<vector<int>> alloc,
                     for(int j = 0; j < r; j++)
                         work[j] += alloc[i][j];
 
+                    safeSeq.push_back(i);
                     finish[i] = true;
                     found = true;
                     count++;
