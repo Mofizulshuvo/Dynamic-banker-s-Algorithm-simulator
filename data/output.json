@@ -1,0 +1,5 @@
+{
+  "safe": true,
+  "sequence": ["P1", "P3", "P4", "P0", "P2"],
+  "message": "SAFE - No deadlock possible"
+}
