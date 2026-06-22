@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dynamic Banker's Algorithm Simulator</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-spinner"></div>
+    </div>
+
+    <!-- Header -->
+    <header>
+        <div class="container">
+            <div class="header-content">
+                <div class="logo">
+                    <div class="logo-icon">BA</div>
+                    <h1>Banker's Algorithm Simulator</h1>
+                </div>
+                <div class="header-controls">
+                    <div class="theme-toggle active-light" id="themeToggle">
+                        <span class="light-mode">☀️ Light</span>
+                        <span class="dark-mode">🌙 Dark</span>
+                    </div>
+                    <button class="btn btn-outline" onclick="downloadInput()">
+                        💾 Download Input
+                    </button>
+                    <button class="btn btn-outline" onclick="document.getElementById('uploadInput').click()">
+                        📂 Upload Input
+                    </button>
+                    <input type="file" id="uploadInput" accept=".json" style="display: none" onchange="uploadInputFile(event)">
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="container">
+        <!-- Control Bar -->
+        <div class="card" style="margin-bottom: 24px;">
+            <div class="card-header">
+                <div class="card-title">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="3"></circle>
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                    </svg>
+                    Control Panel
+                </div>
+                <div class="card-actions">
+                    <button class="btn btn-primary" onclick="runSimulation()">
+                        ▶️ Run Simulation
+                    </button>
+                    <button class="btn btn-warning" onclick="resetSystem()">
+                        🔄 Reset
+                    </button>
+                </div>
+            </div>
+            <div class="fault-controls">
+                <button class="btn btn-success" onclick="addProcess()">
+                    ➕ Add Process
+                </button>
+                <button class="btn btn-success" onclick="addResource()">
+                    ➕ Add Resource
+                </button>
+                <button class="btn btn-danger" onclick="removeLastProcess()">
+                    ➖ Remove Process
+                </button>
+                <button class="btn btn-danger" onclick="removeLastResource()">
+                    ➖ Remove Resource
+                </button>
+                <button class="btn btn-danger" onclick="injectRandomFault()">
+                    ⚡ Random Fault
+                </button>
+                <div class="fault-slider">
+                    <label style="font-size: 0.85rem; color: var(--text-secondary);">Manual Fault:</label>
+                    <input type="range" min="0" max="5" value="0" id="faultSlider" onchange="updateFaultValue(this.value)">
+                    <span class="fault-value" id="faultValue">0</span>
+                </div>
+                <button class="btn btn-danger" onclick="injectManualFault()">
+                    🔧 Apply Fault
+                </button>
+            </div>
+        </div>
+
+        <!-- Grid Layout -->
+        <div class="grid grid-2">
+            <!-- Available Resources -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M20 7h-9"></path>
+                            <path d="M14 17H5"></path>
+                            <circle cx="17" cy="17" r="3"></circle>
+                            <circle cx="7" cy="7" r="3"></circle>
+                        </svg>
+                        Available Resources
+                    </div>
+                    <div class="tooltip">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                        </svg>
+                        <span class="tooltip-text">Total available instances of each resource type in the system</span>
+                    </div>
+                </div>
+                <div class="available-display" id="availableDisplay">
+                    <!-- Dynamic content -->
+                </div>
+            </div>
+
+            <!-- System Status -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
+                        </svg>
+                        System Status
+                    </div>
+                </div>
+                <div id="systemStatus">
+                    <div class="status-badge status-warning" style="margin-bottom: 16px;">
+                        ⏳ Ready for simulation
+                    </div>
+                    <div class="help-section">
+                        <h3>💡 Quick Guide</h3>
+                        <p>1. Edit the matrices below or use the controls above</p>
+                        <p>2. Click "Download Input" to save input.json</p>
+                        <p>3. Run C++ backend (run.bat or manually)</p>
+                        <p>4. Click "Upload Output" to load results</p>
+                        <p>5. Green = Safe, Red = Unsafe (deadlock risk)</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Matrices -->
+        <div class="grid grid-3">
+            <!-- Allocation Matrix -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                            <line x1="3" y1="9" x2="21" y2="9"></line>
+                            <line x1="9" y1="21" x2="9" y2="9"></line>
+                        </svg>
+                        Allocation Matrix
+                    </div>
+                    <div class="tooltip">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                        </svg>
+                        <span class="tooltip-text">Resources currently allocated to each process</span>
+                    </div>
+                </div>
+                <div class="matrix-container">
+                    <table class="matrix-table" id="allocationTable">
+                        <!-- Dynamic content -->
+                    </table>
+                </div>
+            </div>
+
+            <!-- Max Matrix -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                            <line x1="3" y1="9" x2="21" y2="9"></line>
+                            <line x1="9" y1="21" x2="9" y2="9"></line>
+                        </svg>
+                        Max Matrix
+                    </div>
+                    <div class="tooltip">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                        </svg>
+                        <span class="tooltip-text">Maximum resources each process may need</span>
+                    </div>
+                </div>
+                <div class="matrix-container">
+                    <table class="matrix-table" id="maxTable">
+                        <!-- Dynamic content -->
+                    </table>
+                </div>
+            </div>
+
+            <!-- Need Matrix -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                            <line x1="3" y1="9" x2="21" y2="9"></line>
+                            <line x1="9" y1="21" x2="9" y2="9"></line>
+                        </svg>
+                        Need Matrix (Auto)
+                    </div>
+                    <div class="tooltip">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                        </svg>
+                        <span class="tooltip-text">Remaining resources needed (Max - Allocation)</span>
+                    </div>
+                </div>
+                <div class="matrix-container">
+                    <table class="matrix-table" id="needTable">
+                        <!-- Dynamic content -->
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Simulation Results -->
+        <div class="card simulation-results" id="simulationResults">
+            <div class="card-header">
+                <div class="card-title">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                    </svg>
+                    Simulation Results
+                </div>
+                <button class="btn btn-outline" onclick="document.getElementById('uploadOutput').click()">
+                    📥 Upload Output
+                </button>
+                <input type="file" id="uploadOutput" accept=".json" style="display: none" onchange="uploadOutputFile(event)">
+            </div>
+            <div class="result-header" id="resultHeader">
+                <div class="result-status" id="resultStatus">
+                    <!-- Dynamic content -->
+                </div>
+                <div class="progress-container" style="margin: 0; flex: 1; max-width: 300px;">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill"></div>
+                    </div>
+                </div>
+            </div>
+            <div id="safeSequenceContainer">
+                <h4 style="margin-bottom: 12px; color: var(--text-secondary);">Safe Sequence:</h4>
+                <div class="safe-sequence" id="safeSequence">
+                    <!-- Dynamic content -->
+                </div>
+            </div>
+        </div>
+
+        <!-- History Panel -->
+        <div class="card" style="margin-top: 24px;">
+            <div class="card-header">
+                <div class="card-title">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <polyline points="12 6 12 12 16 14"></polyline>
+                    </svg>
+                    Simulation History
+                </div>
+                <button class="btn btn-outline" onclick="clearHistory()">
+                    🗑️ Clear
+                </button>
+            </div>
+            <div class="history-panel" id="historyPanel">
+                <p style="color: var(--text-secondary); text-align: center; padding: 20px;">No simulations run yet</p>
+            </div>
+        </div>
+    </main>
+
+    <script src="script.js"></script>
+</body>
+</html>

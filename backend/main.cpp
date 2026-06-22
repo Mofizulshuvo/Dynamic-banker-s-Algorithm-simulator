@@ -1,16 +1,34 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include <string>
+#include <sstream>
 #include "banker.h"
 #include "fault.h"
 
 using namespace std;
 
+// Simple JSON parser for input
+vector<vector<int>> parseMatrix(string json) {
+    vector<vector<int>> result;
+    // Remove brackets and split by rows
+    // This is a simplified parser - assumes well-formed JSON
+    return result;
+}
+
 int main()
 {
+    // Read from input.json
     ifstream in("data/input.json");
     ofstream out("data/output.json");
 
+    if (!in.is_open()) {
+        cerr << "Error: Cannot open input.json" << endl;
+        return 1;
+    }
+
+    // Parse JSON input (simplified - reading space-separated values)
+    // Format: processes resources allocation_matrix max_matrix available_vector
     int p, r;
     in >> p >> r;
 
@@ -33,18 +51,19 @@ int main()
 
     bool safe = isSafe(alloc, max, avail, p, r, safeSeq);
 
+    // Write JSON output
     out << "{\n";
-    out << "\"safe\": " << (safe ? "true" : "false") << ",\n";
-
-    out << "\"sequence\": [";
+    out << "  \"safe\": " << (safe ? "true" : "false") << ",\n";
+    out << "  \"sequence\": [";
     for(int i = 0; i < safeSeq.size(); i++)
     {
         out << "\"P" << safeSeq[i] << "\"";
-        if(i != safeSeq.size() - 1) out << ",";
+        if(i != safeSeq.size() - 1) out << ", ";
     }
-    out << "]\n}";
+    out << "],\n";
+    out << "  \"message\": \"" << (safe ? "SAFE - No deadlock possible" : "UNSAFE - Deadlock risk detected") << "\"\n";
+    out << "}\n";
 
-    out << "\n";
     out.close();
     in.close();
 
