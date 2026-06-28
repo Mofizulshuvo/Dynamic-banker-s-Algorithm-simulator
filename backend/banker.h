@@ -2,17 +2,61 @@
 #define BANKER_H
 
 #include <vector>
+
 using namespace std;
 
-void calculateNeed(vector<vector<int>>& need,
-                   vector<vector<int>> max,
-                   vector<vector<int>> alloc,
-                   int p, int r);
+class Banker
+{
+private:
 
-bool isSafe(vector<vector<int>> alloc,
-            vector<vector<int>> max,
-            vector<int> avail,
-            int p, int r,
-            vector<int>& safeSeq);
+    int processCount;
+    int resourceCount;
+
+    vector<vector<int>> allocation;
+    vector<vector<int>> maximum;
+    vector<vector<int>> need;
+    vector<int> available;
+
+    // Suspended process list
+    vector<bool> suspended;
+
+    // Safe sequence
+    vector<int> safeSequence;
+
+public:
+
+    Banker();
+
+    // Load all data
+    void setData(
+        int p,
+        int r,
+        vector<vector<int>> alloc,
+        vector<vector<int>> max,
+        vector<int> avail
+    );
+
+    // Need Matrix
+    void calculateNeed();
+
+    // Safe State Check
+    bool checkSafeState();
+
+    // Display Safe Sequence
+    void printSafeSequence();
+
+    // Getters
+    vector<int> getSafeSequence();
+
+    vector<vector<int>> getNeed();
+
+    // Suspend / Resume
+    void suspendProcess(int processID);
+
+    void resumeProcess(int processID);
+
+    bool isSuspended(int processID);
+
+};
 
 #endif
