@@ -2,40 +2,43 @@
 #define RECOVERY_H
 
 #include "models.h"
+#include <chrono>
 
 class RecoveryEngine
 {
-public:
+private:
+    int recoveryCounter;
 
+public:
     RecoveryEngine();
 
-    // Strategy 1
-    bool restoreResource(
+    // Strategy 1: Restore Lost Resource
+    RecoveryAction restoreResource(
         SystemState &state,
         int resourceID,
         int units
     );
 
-    // Strategy 2
-    bool suspendProcess(
+    // Strategy 2: Suspend Process
+    RecoveryAction suspendProcess(
         SystemState &state,
         int processID
     );
 
-    // Strategy 3
-    bool resumeProcess(
+    // Strategy 3: Resume Process
+    RecoveryAction resumeProcess(
         SystemState &state,
         int processID
     );
 
-    // Strategy 4
-    bool terminateProcess(
+    // Strategy 4: Terminate Process
+    RecoveryAction terminateProcess(
         SystemState &state,
         int processID
     );
 
-    // Strategy 5
-    bool manualReallocation(
+    // Strategy 5: Manual Resource Reallocation
+    RecoveryAction manualReallocation(
         SystemState &state,
         int fromProcess,
         int toProcess,
@@ -43,9 +46,14 @@ public:
         int units
     );
 
-    // Print Recovery Result
-    void printRecovery(const RecoveryAction &action);
+    // Get recovery history
+    vector<RecoveryAction> getRecoveryHistory(const SystemState &state);
 
+    // Clear recovery history
+    void clearRecoveryHistory(SystemState &state);
+
+private:
+    long long getCurrentTimestamp();
 };
 
 #endif

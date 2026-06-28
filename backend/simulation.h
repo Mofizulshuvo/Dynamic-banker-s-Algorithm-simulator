@@ -1,66 +1,89 @@
 #ifndef SIMULATION_H
 #define SIMULATION_H
 
-#include <vector>
-#include <string>
-
-using namespace std;
+#include "models.h"
+#include "banker.h"
+#include "fault.h"
+#include "recovery.h"
+#include <chrono>
 
 class Simulation
 {
 private:
-
-    // Number of processes and resources
-    int processCount;
-    int resourceCount;
-
-    // System matrices
-    vector<vector<int>> allocation;
-    vector<vector<int>> maximum;
-    vector<vector<int>> need;
-    vector<int> available;
-
-    // Simulation status
-    bool safeState;
-    bool simulationRunning;
-    bool simulationPaused;
-    bool faultOccurred;
-
-    // Safe execution order
-    vector<int> safeSequence;
+    SystemState state;
+    Banker banker;
+    FaultEngine faultEngine;
+    RecoveryEngine recoveryEngine;
+    int timelineCounter;
 
 public:
-
-    // Constructor
     Simulation();
 
-    // Initializ
-    void initialize();
+    // Initialize System with given parameters
+    bool initialize(int processCount, int resourceCount,
+                    const vector<vector<int>>& allocation,
+                    const vector<vector<int>>& maximum,
+                    const vector<int>& available);
 
-    //  Display 
-    void displaySystem();
+    // Initialize System with total resources
+    bool initializeWithTotal(int processCount, int resourceCount,
+                            const vector<vector<int>>& allocation,
+                            const vector<vector<int>>& maximum,
+                            const vector<int>& available,
+                            const vector<int>& totalResources);
 
-    //  Need Matrix 
-    void calculateNeed();
+    // Get current state
+    SystemState& getState();
 
-    //  Simulation 
-    void startSimulation();
+    // Reset simulation
+    void reset();
 
-    void pauseSimulation();
+    // Run complete simulation
+    bool run();
 
-    void resumeSimulation();
+    // Run one step of simulation
+    bool runOneStep();
 
-    //  Fault 
-    void injectFault();
+    // Pause simulation
+    void pause();
 
-    //  Recovery 
-    void recoverSystem();
+    // Resume simulation
+    void resume();
 
-    //  Utility 
-    bool isRunning();
+    // Set simulation speed (milliseconds per step)
+    void setSimulationSpeed(int speed);
 
-    bool isPaused();
+    // Get simulation speed
+    int getSimulationSpeed();
 
+    // Inject fault during runtime
+    FaultEvent injectFault(FaultType type, int resourceID, int unitsLost);
+
+    // Apply recovery
+    RecoveryAction recover(RecoveryType type, int processID = -1,
+                         int resourceID = -1, int units = 0,
+                         int fromProcess = -1, int toProcess = -1);
+
+    // Add timeline event
+    void addTimelineEvent(const string& event, int processID = -1);
+
+    // Get timeline
+    vector<TimelineEvent> getTimeline();
+
+    // Clear timeline
+    void clearTimeline();
+
+    // Check if system is safe
+    bool isSafe();
+
+    // Get safe sequence
+    vector<int> getSafeSequence();
+
+    // Validate current state
+    bool validateState();
+
+private:
+    long long getCurrentTimestamp();
 };
 
 #endif

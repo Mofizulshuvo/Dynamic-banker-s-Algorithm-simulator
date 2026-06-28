@@ -4,6 +4,7 @@
 #include <iomanip>
 
 using namespace std;
+
 // Constructor
 Banker::Banker()
 {
@@ -28,37 +29,30 @@ void Banker::calculateNeed(SystemState &state)
     }
 }
 
-// Check Safe State
-bool Banker::checkSafeState(SystemState &state)
+// Internal Safety Algorithm
+bool Banker::safetyAlgorithm(const SystemState &state, vector<int> &safeSequence)
 {
-    state.safeSequence.clear();
-
     vector<int> work = state.available;
-
     vector<bool> finish(state.processCount, false);
+    safeSequence.clear();
 
     bool found;
-
     do
     {
         found = false;
 
         for (int i = 0; i < state.processCount; i++)
         {
-            // Skip Finished
             if (finish[i])
                 continue;
 
-            // Skip Suspended
             if (state.processes[i].status == SUSPENDED)
                 continue;
 
-            // Skip Terminated
             if (state.processes[i].status == TERMINATED)
                 continue;
 
             bool possible = true;
-
             for (int j = 0; j < state.resourceCount; j++)
             {
                 if (state.need[i][j] > work[j])
@@ -76,13 +70,10 @@ bool Banker::checkSafeState(SystemState &state)
                 }
 
                 finish[i] = true;
-
-                state.safeSequence.push_back(i);
-
+                safeSequence.push_back(i);
                 found = true;
             }
         }
-
     } while (found);
 
     for (int i = 0; i < state.processCount; i++)
@@ -100,37 +91,115 @@ bool Banker::checkSafeState(SystemState &state)
     return true;
 }
 
-// Print Need Matrix
-void Banker::printNeedMatrix(const SystemState &state)
+// Check Safe State
+bool Banker::checkSafeState(SystemState &state)
 {
-    cout << "\nNeed Matrix\n\n";
+    return safetyAlgorithm(state, state.safeSequence);
+}
 
+// Get Safe Sequence
+vector<int> Banker::getSafeSequence(const SystemState &state)
+{
+    vector<int> seq;
+    safetyAlgorithm(state, seq);
+    return seq;
+}
+
+// Resource Request Algorithm
+bool Banker::requestResources(SystemState &state, int processID, const vector<int> &request)
+{
+    if (processID < 0 || processID >= state.processCount)
+        return false;
+
+    if (!isValidRequest(state, processID, request))
+        return false;
+
+    if (!canAllocate(state, request))
+        return false;
+
+    // Pretend to allocate
+    vector<int> tempAvailable = state.available;
+    vector<vector<int>> tempAllocation = state.allocation;
+    vector<vector<int>> tempNeed = state.need;
+
+    for (int j = 0; j < state.resourceCount; j++)
+    {
+        tempAvailable[j] -= request[j];
+        tempAllocation[processID][j] += request[j];
+        tempNeed[processID][j] -= request[j];
+    }
+
+    // Create temporary state for safety check
+    SystemState tempState = state;
+    tempState.available = tempAvailable;
+    tempState.allocation = tempAllocation;
+    tempState.need = tempNeed;
+
+    vector<int> tempSeq;
+    if (safetyAlgorithm(tempState, tempSeq))
+    {
+        // Actually allocate
+        state.available = tempAvailable;
+        state.allocation = tempAllocation;
+        state.need = tempNeed;
+        return true;
+    }
+
+    return false;
+}
+
+// Validate Allocation Matrix
+bool Banker::validateAllocation(const SystemState &state)
+{
     for (int i = 0; i < state.processCount; i++)
     {
         for (int j = 0; j < state.resourceCount; j++)
         {
-            cout << setw(5) << state.need[i][j];
-        }
+            if (state.allocation[i][j] < 0)
+                return false;
 
-        cout << endl;
+            if (state.allocation[i][j] > state.maximum[i][j])
+                return false;
+        }
     }
+    return true;
 }
 
-
-// Print Safe Sequence
-void Banker::printSafeSequence(const SystemState &state)
+// Validate Maximum Matrix
+bool Banker::validateMaximum(const SystemState &state)
 {
-    cout << "\nSafe Sequence : ";
-
-    for (int i = 0; i < state.safeSequence.size(); i++)
+    for (int i = 0; i < state.processCount; i++)
     {
-        cout << "P" << state.safeSequence[i];
-
-        if (i != state.safeSequence.size() - 1)
+        for (int j = 0; j < state.resourceCount; j++)
         {
-            cout << " -> ";
+            if (state.maximum[i][j] < 0)
+                return false;
         }
     }
+    return true;
+}
 
-    cout << endl;
+// Check if Request is Valid (Request <= Need)
+bool Banker::isValidRequest(const SystemState &state, int processID, const vector<int> &request)
+{
+    for (int j = 0; j < state.resourceCount; j++)
+    {
+        if (request[j] < 0)
+            return false;
+
+        if (request[j] > state.need[processID][j])
+            return false;
+    }
+    return true;
+}
+
+// Check if Allocation is Possible (Request <= Available)
+bool Banker::canAllocate(const SystemState &state, const vector<int> &request)
+{
+    for (int j = 0; j < state.resourceCount; j++)
+    {
+        if (request[j] > state.available[j])
+            return false;
+    }
+    return true;
 }

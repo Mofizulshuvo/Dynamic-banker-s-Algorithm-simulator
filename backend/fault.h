@@ -2,29 +2,52 @@
 #define FAULT_H
 
 #include "models.h"
+#include <chrono>
 
 class FaultEngine
 {
-public:
+private:
+    int faultCounter;
 
+public:
     FaultEngine();
 
-    // Reduce available resource
-    void injectFault(
+    // Inject resource loss fault
+    FaultEvent injectResourceLoss(
+        SystemState &state,
+        int resourceID,
+        int unitsLost
+    );
+
+    // Inject memory fragmentation fault
+    FaultEvent injectMemoryFragmentation(
+        SystemState &state,
+        int resourceID,
+        int unitsLost
+    );
+
+    // Inject hardware failure fault
+    FaultEvent injectHardwareFailure(
         SystemState &state,
         int resourceID,
         int unitsLost
     );
 
     // Restore lost resource
-    void restoreResource(
+    bool restoreResource(
         SystemState &state,
         int resourceID,
         int units
     );
 
-    // Print fault information
-    void printFault(const FaultEvent &fault);
+    // Get fault history
+    vector<FaultEvent> getFaultHistory(const SystemState &state);
+
+    // Clear fault history
+    void clearFaultHistory(SystemState &state);
+
+private:
+    long long getCurrentTimestamp();
 };
 
 #endif

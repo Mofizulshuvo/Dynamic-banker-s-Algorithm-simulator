@@ -1,3 +1,6 @@
+// API Base URL
+const API_BASE = 'http://localhost:8080/api';
+
 // Global State
 let state = {
     processes: ['P0', 'P1', 'P2', 'P3', 'P4'],
@@ -17,21 +20,477 @@ let state = {
         [4, 3, 3]
     ],
     available: [3, 3, 2],
-    history: []
+    totalResources: [10, 5, 7],
+    initialized: false,
+    simulationSpeed: 1000
 };
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
     initializeUI();
-    loadFromLocalStorage();
+    checkServerStatus();
 });
 
 function initializeUI() {
-    renderAvailable();
+    renderResourceBars();
+    renderProcessCards();
     renderAllocation();
     renderMax();
     renderNeed();
     setupThemeToggle();
+}
+
+// Check Server Status
+async function checkServerStatus() {
+    try {
+        const response = await fetch(`${API_BASE}/status`);
+        if (response.ok) {
+            const data = await response.json();
+            if (data.success && data.state.simulationState !== 'IDLE') {
+                state.initialized = true;
+                updateUIFromState(data.state);
+                enableControls(true);
+            }
+        }
+    } catch (error) {
+        console.log('Server not available yet');
+    }
+}
+
+// API Helper Functions
+async function apiCall(endpoint, method = 'GET', body = null) {
+    try {
+        const options = {
+            method,
+            headers: { 'Content-Type': 'application/json' }
+        };
+        if (body) {
+            options.body = JSON.stringify(body);
+        }
+        const response = await fetch(`${API_BASE}${endpoint}`, options);
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('API Error:', response.status, errorText);
+            throw new Error(`HTTP ${response.status}: ${errorText}`);
+        }
+        
+        return await response.json();
+    } catch (error) {
+        console.error('API call failed:', error);
+        showToast('API call failed: ' + error.message, 'error');
+        return { success: false, error: error.message };
+    }
+}
+
+// Initialize System
+async function initializeSystem() {
+    showLoading(true);
+    
+    const body = {
+        processCount: state.processes.length,
+        resourceCount: state.resources.length,
+        allocation: state.allocation,
+        maximum: state.max,
+        available: state.available,
+        totalResources: state.totalResources
+    };
+    
+    const result = await apiCall('/initialize', 'POST', body);
+    
+    showLoading(false);
+    
+    if (result.success) {
+        state.initialized = true;
+        updateUIFromState(result.state);
+        enableControls(true);
+        showToast('System initialized successfully', 'success');
+    } else {
+        showToast('Initialization failed: ' + (result.error || 'Unknown error'), 'error');
+    }
+}
+
+// Run Simulation
+async function runSimulation() {
+    if (!state.initialized) {
+        showToast('Please initialize the system first', 'error');
+        return;
+    }
+    
+    showLoading(true);
+    
+    const result = await apiCall('/run', 'POST');
+    
+    showLoading(false);
+    
+    if (result.success) {
+        updateUIFromState(result.state);
+        showToast('Simulation started', 'success');
+        document.getElementById('safeSequenceCard').style.display = 'block';
+        renderSafeSequence(result.state.safeSequence);
+    } else {
+        showToast('Cannot start simulation: ' + result.message, 'error');
+    }
+}
+
+// Step Simulation
+async function stepSimulation() {
+    if (!state.initialized) {
+        showToast('Please initialize the system first', 'error');
+        return;
+    }
+    
+    showLoading(true);
+    
+    const result = await apiCall('/step', 'POST');
+    
+    showLoading(false);
+    
+    if (result.success) {
+        updateUIFromState(result.state);
+        renderSafeSequence(result.state.safeSequence);
+        renderTimeline(result.state.timeline);
+    } else {
+        showToast('Step failed: ' + result.message, 'error');
+    }
+}
+
+// Pause Simulation
+async function pauseSimulation() {
+    const result = await apiCall('/pause', 'POST');
+    if (result.success) {
+        updateUIFromState(result.state);
+        showToast('Simulation paused', 'info');
+    }
+}
+
+// Resume Simulation
+async function resumeSimulation() {
+    const result = await apiCall('/resume', 'POST');
+    if (result.success) {
+        updateUIFromState(result.state);
+        showToast('Simulation resumed', 'info');
+    }
+}
+
+// Reset System
+async function resetSystem() {
+    const result = await apiCall('/reset', 'POST');
+    if (result.success) {
+        state.initialized = false;
+        updateUIFromState(result.state);
+        enableControls(false);
+        document.getElementById('safeSequenceCard').style.display = 'none';
+        document.getElementById('timelinePanel').innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 20px;">No events yet</p>';
+        showToast('System reset', 'success');
+    }
+}
+
+// Update Speed
+async function updateSpeed(speed) {
+    document.getElementById('speedValue').textContent = speed + 'ms';
+    state.simulationSpeed = parseInt(speed);
+    
+    const result = await apiCall('/speed', 'POST', { speed: parseInt(speed) });
+    if (result.success) {
+        showToast('Simulation speed updated', 'info');
+    }
+}
+
+// Show Fault Panel
+function showFaultPanel() {
+    const panel = document.getElementById('faultPanel');
+    panel.style.display = 'block';
+    
+    // Populate resource select
+    const select = document.getElementById('faultResourceID');
+    select.innerHTML = state.resources.map((r, i) => 
+        `<option value="${i}">${r}</option>`
+    ).join('');
+}
+
+// Hide Fault Panel
+function hideFaultPanel() {
+    document.getElementById('faultPanel').style.display = 'none';
+}
+
+// Inject Fault
+async function injectFault() {
+    const type = document.getElementById('faultType').value;
+    const resourceID = parseInt(document.getElementById('faultResourceID').value);
+    const unitsLost = parseInt(document.getElementById('faultUnitsLost').value);
+    
+    showLoading(true);
+    
+    const result = await apiCall('/fault', 'POST', { type, resourceID, unitsLost });
+    
+    showLoading(false);
+    
+    if (result.success) {
+        updateUIFromState(result.state);
+        renderTimeline(result.state.timeline);
+        hideFaultPanel();
+        showToast('Fault injected: ' + result.fault.description, 'warning');
+    } else {
+        showToast('Fault injection failed: ' + result.fault.description, 'error');
+    }
+}
+
+// Show Recovery Panel
+function showRecoveryPanel() {
+    const panel = document.getElementById('recoveryPanel');
+    panel.style.display = 'block';
+    
+    // Generate recovery options
+    const options = document.getElementById('recoveryOptions');
+    options.innerHTML = `
+        <div class="recovery-option-card">
+            <div class="recovery-option-header">
+                <span class="recovery-option-title">Restore Resource</span>
+            </div>
+            <div class="recovery-option-description">Restore lost resources to the available pool</div>
+            <div class="recovery-option-form">
+                <div class="form-row">
+                    <label>Resource ID:</label>
+                    <select id="recoveryResourceID">
+                        ${state.resources.map((r, i) => `<option value="${i}">${r}</option>`).join('')}
+                    </select>
+                </div>
+                <div class="form-row">
+                    <label>Units:</label>
+                    <input type="number" id="recoveryUnits" value="1" min="1">
+                </div>
+            </div>
+            <div class="recovery-option-actions">
+                <button class="btn btn-success" onclick="applyRecovery('RESTORE_RESOURCE')">Apply</button>
+            </div>
+        </div>
+        
+        <div class="recovery-option-card">
+            <div class="recovery-option-header">
+                <span class="recovery-option-title">Suspend Process</span>
+            </div>
+            <div class="recovery-option-description">Temporarily suspend a process to free its resources</div>
+            <div class="recovery-option-form">
+                <div class="form-row">
+                    <label>Process ID:</label>
+                    <select id="suspendProcessID">
+                        ${state.processes.map((p, i) => `<option value="${i}">${p}</option>`).join('')}
+                    </select>
+                </div>
+            </div>
+            <div class="recovery-option-actions">
+                <button class="btn btn-warning" onclick="applyRecovery('SUSPEND_PROCESS')">Apply</button>
+            </div>
+        </div>
+        
+        <div class="recovery-option-card">
+            <div class="recovery-option-header">
+                <span class="recovery-option-title">Terminate Process</span>
+            </div>
+            <div class="recovery-option-description">Permanently terminate a process and release all its resources</div>
+            <div class="recovery-option-form">
+                <div class="form-row">
+                    <label>Process ID:</label>
+                    <select id="terminateProcessID">
+                        ${state.processes.map((p, i) => `<option value="${i}">${p}</option>`).join('')}
+                    </select>
+                </div>
+            </div>
+            <div class="recovery-option-actions">
+                <button class="btn btn-danger" onclick="applyRecovery('TERMINATE_PROCESS')">Apply</button>
+            </div>
+        </div>
+    `;
+}
+
+// Hide Recovery Panel
+function hideRecoveryPanel() {
+    document.getElementById('recoveryPanel').style.display = 'none';
+}
+
+// Apply Recovery
+async function applyRecovery(type) {
+    let body = { type };
+    
+    switch (type) {
+        case 'RESTORE_RESOURCE':
+            body.resourceID = parseInt(document.getElementById('recoveryResourceID').value);
+            body.units = parseInt(document.getElementById('recoveryUnits').value);
+            break;
+        case 'SUSPEND_PROCESS':
+            body.processID = parseInt(document.getElementById('suspendProcessID').value);
+            break;
+        case 'TERMINATE_PROCESS':
+            body.processID = parseInt(document.getElementById('terminateProcessID').value);
+            break;
+    }
+    
+    showLoading(true);
+    
+    const result = await apiCall('/recover', 'POST', body);
+    
+    showLoading(false);
+    
+    if (result.success) {
+        updateUIFromState(result.state);
+        renderTimeline(result.state.timeline);
+        hideRecoveryPanel();
+        showToast('Recovery applied: ' + result.recovery.message, 'success');
+    } else {
+        showToast('Recovery failed: ' + result.recovery.message, 'error');
+    }
+}
+
+// Update UI from State
+function updateUIFromState(serverState) {
+    state.allocation = serverState.allocation;
+    state.max = serverState.maximum;
+    state.available = serverState.available;
+    state.totalResources = serverState.totalResources || state.available;
+    
+    renderResourceBars();
+    renderProcessCards(serverState.processes);
+    renderAllocation();
+    renderMax();
+    renderNeed();
+    updateSystemStatus(serverState.simulationState);
+}
+
+// Enable/Disable Controls
+function enableControls(enabled) {
+    document.getElementById('runBtn').disabled = !enabled;
+    document.getElementById('pauseBtn').disabled = !enabled;
+    document.getElementById('resumeBtn').disabled = !enabled;
+    document.getElementById('stepBtn').disabled = !enabled;
+    document.getElementById('faultBtn').disabled = !enabled;
+    document.getElementById('recoverBtn').disabled = !enabled;
+}
+
+// Render Resource Bars
+function renderResourceBars() {
+    const container = document.getElementById('resourceBars');
+    container.innerHTML = state.resources.map((resource, index) => {
+        const available = state.available[index];
+        const total = state.totalResources[index] || available + 5;
+        const percentage = (available / total) * 100;
+        
+        return `
+            <div class="resource-bar-item">
+                <div class="resource-bar-header">
+                    <span class="resource-bar-label">Resource ${resource}</span>
+                    <span class="resource-bar-value">${available} / ${total}</span>
+                </div>
+                <div class="resource-bar-track">
+                    <div class="resource-bar-fill" style="width: ${percentage}%"></div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+// Render Process Cards
+function renderProcessCards(processes) {
+    const container = document.getElementById('processCards');
+    
+    if (!processes || processes.length === 0) {
+        container.innerHTML = state.processes.map((_, i) => `
+            <div class="process-card status-waiting">
+                <div class="process-card-header">
+                    <span class="process-card-id">P${i}</span>
+                    <span class="process-card-status">WAITING</span>
+                </div>
+                <div class="process-card-details">
+                    <div class="process-card-detail">
+                        <span class="process-card-detail-label">Allocated:</span>
+                        <span class="process-card-detail-value">${state.allocation[i].join(', ')}</span>
+                    </div>
+                    <div class="process-card-detail">
+                        <span class="process-card-detail-label">Need:</span>
+                        <span class="process-card-detail-value">${state.max[i].map((m, j) => Math.max(0, m - state.allocation[i][j])).join(', ')}</span>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+        return;
+    }
+    
+    container.innerHTML = processes.map((process, i) => {
+        const statusMap = {
+            'WAITING': 'waiting',
+            'RUNNING': 'running',
+            'FINISHED': 'finished',
+            'SUSPENDED': 'suspended',
+            'TERMINATED': 'terminated'
+        };
+        const statusClass = statusMap[process.status] || 'waiting';
+        
+        return `
+            <div class="process-card status-${statusClass}">
+                <div class="process-card-header">
+                    <span class="process-card-id">P${process.id}</span>
+                    <span class="process-card-status">${process.status}</span>
+                </div>
+                <div class="process-card-details">
+                    <div class="process-card-detail">
+                        <span class="process-card-detail-label">Allocated:</span>
+                        <span class="process-card-detail-value">${state.allocation[i].join(', ')}</span>
+                    </div>
+                    <div class="process-card-detail">
+                        <span class="process-card-detail-label">Need:</span>
+                        <span class="process-card-detail-value">${state.max[i].map((m, j) => Math.max(0, m - state.allocation[i][j])).join(', ')}</span>
+                    </div>
+                </div>
+                ${process.progress > 0 ? `
+                    <div class="process-card-progress">
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: ${process.progress}%"></div>
+                        </div>
+                    </div>
+                ` : ''}
+            </div>
+        `;
+    }).join('');
+}
+
+// Render Safe Sequence
+function renderSafeSequence(sequence) {
+    const container = document.getElementById('safeSequence');
+    if (!sequence || sequence.length === 0) {
+        container.innerHTML = '<p style="color: var(--text-secondary);">No safe sequence available</p>';
+        return;
+    }
+    
+    container.innerHTML = sequence.map((processId, index) => `
+        <div class="sequence-step" style="animation-delay: ${index * 0.1}s">P${processId}</div>
+    `).join('');
+}
+
+// Render Timeline
+function renderTimeline(timeline) {
+    const container = document.getElementById('timelinePanel');
+    
+    if (!timeline || timeline.length === 0) {
+        container.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 20px;">No events yet</p>';
+        return;
+    }
+    
+    container.innerHTML = timeline.map(event => `
+        <div class="timeline-item ${event.safe ? 'safe' : 'unsafe'}">
+            <div class="timeline-marker"></div>
+            <div class="timeline-content">
+                <div class="timeline-event">${event.event}</div>
+                <div class="timeline-time">Process: P${event.processID}</div>
+                <div class="timeline-available">Available: [${event.available.join(', ')}]</div>
+            </div>
+        </div>
+    `).join('');
+}
+
+// Clear Timeline
+function clearTimeline() {
+    document.getElementById('timelinePanel').innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 20px;">No events yet</p>';
+    showToast('Timeline cleared', 'info');
 }
 
 // Theme Toggle
@@ -50,579 +509,35 @@ function setupThemeToggle() {
     });
 }
 
-// Render Available Resources
-function renderAvailable() {
-    const container = document.getElementById('availableDisplay');
-    container.innerHTML = state.resources.map((resource, index) => `
-        <div class="available-item">
-            <div class="label">${resource}</div>
-            <input type="number" 
-                   value="${state.available[index]}" 
-                   min="0" 
-                   onchange="updateAvailable(${index}, this.value)">
-        </div>
-    `).join('');
-}
-
-function updateAvailable(index, value) {
-    const numValue = parseInt(value) || 0;
-    if (numValue < 0) {
-        showToast('Available resources cannot be negative', 'error');
-        renderAvailable();
-        return;
-    }
-    state.available[index] = numValue;
-    renderNeed();
-}
-
-// Render Allocation Matrix
-function renderAllocation() {
-    const table = document.getElementById('allocationTable');
-    let html = '<thead><tr><th>Process</th>';
-    state.resources.forEach(resource => {
-        html += `<th class="resource-header">${resource}</th>`;
-    });
-    html += '</tr></thead><tbody>';
-
-    state.processes.forEach((process, pIndex) => {
-        html += `<tr><td class="process-header">${process}</td>`;
-        state.resources.forEach((_, rIndex) => {
-            html += `<td><input type="number" 
-                           value="${state.allocation[pIndex][rIndex]}" 
-                           min="0" 
-                           max="${state.max[pIndex][rIndex]}"
-                           onchange="updateAllocation(${pIndex}, ${rIndex}, this.value)"></td>`;
-        });
-        html += '</tr>';
-    });
-
-    html += '</tbody>';
-    table.innerHTML = html;
-}
-
-function updateAllocation(pIndex, rIndex, value) {
-    const numValue = parseInt(value) || 0;
-    if (numValue < 0) {
-        showToast('Allocation cannot be negative', 'error');
-        renderAllocation();
-        return;
-    }
-    if (numValue > state.max[pIndex][rIndex]) {
-        showToast('Allocation cannot exceed Max value', 'error');
-        renderAllocation();
-        return;
-    }
-    state.allocation[pIndex][rIndex] = numValue;
-    renderNeed();
-}
-
-// Render Max Matrix
-function renderMax() {
-    const table = document.getElementById('maxTable');
-    let html = '<thead><tr><th>Process</th>';
-    state.resources.forEach(resource => {
-        html += `<th class="resource-header">${resource}</th>`;
-    });
-    html += '</tr></thead><tbody>';
-
-    state.processes.forEach((process, pIndex) => {
-        html += `<tr><td class="process-header">${process}</td>`;
-        state.resources.forEach((_, rIndex) => {
-            html += `<td><input type="number" 
-                           value="${state.max[pIndex][rIndex]}" 
-                           min="0" 
-                           onchange="updateMax(${pIndex}, ${rIndex}, this.value)"></td>`;
-        });
-        html += '</tr>';
-    });
-
-    html += '</tbody>';
-    table.innerHTML = html;
-}
-
-function updateMax(pIndex, rIndex, value) {
-    const numValue = parseInt(value) || 0;
-    if (numValue < 0) {
-        showToast('Max cannot be negative', 'error');
-        return;
-    }
-    state.max[pIndex][rIndex] = numValue;
-    renderNeed();
-}
-
-// Render Need Matrix (Auto-calculated)
-function renderNeed() {
-    const table = document.getElementById('needTable');
-    let html = '<thead><tr><th>Process</th>';
-    state.resources.forEach(resource => {
-        html += `<th class="resource-header">${resource}</th>`;
-    });
-    html += '</tr></thead><tbody>';
-
-    state.processes.forEach((process, pIndex) => {
-        html += `<tr><td class="process-header">${process}</td>`;
-        state.resources.forEach((_, rIndex) => {
-            const need = Math.max(0, state.max[pIndex][rIndex] - state.allocation[pIndex][rIndex]);
-            html += `<td style="font-weight: 600; color: ${need > 0 ? 'var(--primary)' : 'var(--success)'}">${need}</td>`;
-        });
-        html += '</tr>';
-    });
-
-    html += '</tbody>';
-    table.innerHTML = html;
-}
-
-// Add Process
-function addProcess() {
-    const newProcessIndex = state.processes.length;
-    state.processes.push(`P${newProcessIndex}`);
-    state.allocation.push(new Array(state.resources.length).fill(0));
-    state.max.push(new Array(state.resources.length).fill(0));
-    renderAllocation();
-    renderMax();
-    renderNeed();
-    showToast(`Process P${newProcessIndex} added`, 'success');
-}
-
-// Remove Process
-function removeLastProcess() {
-    if (state.processes.length <= 1) {
-        showToast('Cannot remove the last process', 'error');
-        return;
-    }
-    const removedProcess = state.processes.pop();
-    state.allocation.pop();
-    state.max.pop();
-    renderAllocation();
-    renderMax();
-    renderNeed();
-    showToast(`${removedProcess} removed`, 'success');
-}
-
-// Add Resource
-function addResource() {
-    const resourceNames = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-    const newResourceIndex = state.resources.length;
-    if (newResourceIndex >= resourceNames.length) {
-        showToast('Maximum resource types reached', 'error');
-        return;
-    }
-    const newResource = resourceNames[newResourceIndex];
-    state.resources.push(newResource);
-    state.available.push(0);
-    state.allocation.forEach(row => row.push(0));
-    state.max.forEach(row => row.push(0));
-    renderAvailable();
-    renderAllocation();
-    renderMax();
-    renderNeed();
-    showToast(`Resource ${newResource} added`, 'success');
-}
-
-// Remove Resource
-function removeLastResource() {
-    if (state.resources.length <= 1) {
-        showToast('Cannot remove the last resource', 'error');
-        return;
-    }
-    const removedResource = state.resources.pop();
-    state.available.pop();
-    state.allocation.forEach(row => row.pop());
-    state.max.forEach(row => row.pop());
-    renderAvailable();
-    renderAllocation();
-    renderMax();
-    renderNeed();
-    showToast(`Resource ${removedResource} removed`, 'success');
-}
-
-// Download Input JSON for C++ Backend
-function downloadInput() {
-    const n = state.processes.length;
-    const m = state.resources.length;
-    
-    // Format: processes resources
-    // Then allocation matrix (n x m)
-    // Then max matrix (n x m)
-    // Then available vector (m)
-    let content = `${n} ${m}\n`;
-    
-    // Allocation matrix
-    state.allocation.forEach(row => {
-        content += row.join(' ') + '\n';
-    });
-    
-    // Max matrix
-    state.max.forEach(row => {
-        content += row.join(' ') + '\n';
-    });
-    
-    // Available vector
-    content += state.available.join(' ') + '\n';
-    
-    const blob = new Blob([content], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'input.json';
-    link.click();
-    URL.revokeObjectURL(url);
-    
-    showToast('Input file downloaded. Save it to data/ folder and run C++ backend.', 'info');
-}
-
-// Upload Input JSON
-function uploadInputFile(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-    
-    const reader = new FileReader();
-    reader.onload = (e) => {
-        try {
-            const lines = e.target.result.trim().split('\n');
-            const firstLine = lines[0].split(' ');
-            const p = parseInt(firstLine[0]);
-            const r = parseInt(firstLine[1]);
-            
-            // Parse allocation matrix
-            const allocation = [];
-            for (let i = 0; i < p; i++) {
-                allocation.push(lines[i + 1].split(' ').map(Number));
-            }
-            
-            // Parse max matrix
-            const max = [];
-            for (let i = 0; i < p; i++) {
-                max.push(lines[p + 1 + i].split(' ').map(Number));
-            }
-            
-            // Parse available vector
-            const available = lines[2 * p + 1].split(' ').map(Number);
-            
-            // Update state
-            state.processes = Array.from({length: p}, (_, i) => `P${i}`);
-            state.resources = Array.from({length: r}, (_, i) => 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[i]);
-            state.allocation = allocation;
-            state.max = max;
-            state.available = available;
-            
-            initializeUI();
-            showToast('Input file loaded successfully', 'success');
-        } catch (error) {
-            showToast('Invalid input file format', 'error');
-        }
-    };
-    reader.readAsText(file);
-    event.target.value = '';
-}
-
-// Upload Output JSON from C++ Backend
-function uploadOutputFile(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-    
-    const reader = new FileReader();
-    reader.onload = (e) => {
-        try {
-            const result = JSON.parse(e.target.result);
-            displayResults(result);
-            addToHistory(result);
-            showToast('Output file loaded successfully', 'success');
-        } catch (error) {
-            showToast('Invalid output file format', 'error');
-        }
-    };
-    reader.readAsText(file);
-    event.target.value = '';
-}
-
-// Banker's Algorithm Implementation (JavaScript fallback)
-function bankersAlgorithmJS() {
-    const n = state.processes.length;
-    const m = state.resources.length;
-    
-    // Calculate Need matrix
-    const need = state.max.map((maxRow, i) => 
-        maxRow.map((maxVal, j) => Math.max(0, maxVal - state.allocation[i][j]))
-    );
-    
-    // Work = Available
-    const work = [...state.available];
-    const finish = new Array(n).fill(false);
-    const safeSequence = [];
-    
-    // Safety algorithm
-    let found;
-    do {
-        found = false;
-        for (let i = 0; i < n; i++) {
-            if (!finish[i]) {
-                let canAllocate = true;
-                for (let j = 0; j < m; j++) {
-                    if (need[i][j] > work[j]) {
-                        canAllocate = false;
-                        break;
-                    }
-                }
-                
-                if (canAllocate) {
-                    // Process can finish
-                    for (let j = 0; j < m; j++) {
-                        work[j] += state.allocation[i][j];
-                    }
-                    finish[i] = true;
-                    safeSequence.push(i);
-                    found = true;
-                }
-            }
-        }
-    } while (found);
-    
-    const isSafe = safeSequence.length === n;
-    
-    return {
-        isSafe,
-        safeSequence: safeSequence.map(i => state.processes[i]),
-        need,
-        work
-    };
-}
-
-// Run Simulation (JavaScript fallback)
-async function runSimulation() {
-    showLoading(true);
-    
-    // Simulate processing delay for animation
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    const result = bankersAlgorithmJS();
-    
-    showLoading(false);
-    displayResults(result);
-    addToHistory(result);
-    showToast('Simulation completed using JavaScript algorithm', 'info');
-}
-
-// Display Results
-async function displayResults(result) {
-    const resultsContainer = document.getElementById('simulationResults');
-    const resultHeader = document.getElementById('resultHeader');
-    const resultStatus = document.getElementById('resultStatus');
-    const safeSequence = document.getElementById('safeSequence');
-    const progressFill = document.getElementById('progressFill');
-    
-    resultsContainer.classList.add('active');
-    
-    if (result.isSafe) {
-        resultHeader.className = 'result-header safe';
-        resultStatus.innerHTML = '✅ SAFE STATE';
-        updateSystemStatus('safe');
-    } else {
-        resultHeader.className = 'result-header unsafe';
-        resultStatus.innerHTML = '⚠️ UNSAFE STATE - Deadlock Risk';
-        updateSystemStatus('unsafe');
-    }
-    
-    // Animate safe sequence
-    if (result.isSafe && result.safeSequence.length > 0) {
-        safeSequence.innerHTML = result.safeSequence.map((process, index) => 
-            `<div class="sequence-step" id="step-${index}">${process}</div>`
-        ).join('');
-        
-        // Animate steps
-        progressFill.style.width = '0%';
-        for (let i = 0; i < result.safeSequence.length; i++) {
-            await new Promise(resolve => setTimeout(resolve, 300));
-            const step = document.getElementById(`step-${i}`);
-            step.classList.add('active');
-            progressFill.style.width = `${((i + 1) / result.safeSequence.length) * 100}%`;
-            
-            await new Promise(resolve => setTimeout(resolve, 300));
-            step.classList.remove('active');
-            step.classList.add('completed');
-        }
-    } else {
-        safeSequence.innerHTML = '<p style="color: var(--text-secondary);">No safe sequence found</p>';
-        progressFill.style.width = '0%';
-    }
-}
-
 // Update System Status
-function updateSystemStatus(status) {
+function updateSystemStatus(simulationState) {
     const statusContainer = document.getElementById('systemStatus');
-    if (status === 'safe') {
-        statusContainer.innerHTML = `
-            <div class="status-badge status-safe" style="margin-bottom: 16px;">
-                ✅ System is in SAFE state
-            </div>
-            <p style="color: var(--text-secondary);">All processes can complete without deadlock.</p>
-        `;
-    } else if (status === 'unsafe') {
-        statusContainer.innerHTML = `
-            <div class="status-badge status-unsafe" style="margin-bottom: 16px;">
-                ⚠️ System is in UNSAFE state
-            </div>
-            <p style="color: var(--text-secondary);">Deadlock may occur. Review resource allocation.</p>
-        `;
-    } else {
-        statusContainer.innerHTML = `
-            <div class="status-badge status-warning" style="margin-bottom: 16px;">
-                ⏳ Ready for simulation
-            </div>
-            <div class="help-section">
-                <h3>💡 Quick Guide</h3>
-                <p>1. Edit the matrices below or use the controls above</p>
-                <p>2. Click "Download Input" to save input.json</p>
-                <p>3. Run C++ backend (run.bat or manually)</p>
-                <p>4. Click "Upload Output" to load results</p>
-                <p>5. Green = Safe, Red = Unsafe (deadlock risk)</p>
-            </div>
-        `;
-    }
-}
-
-// Fault Injection
-function injectRandomFault() {
-    if (state.resources.length === 0) {
-        showToast('No resources to inject fault', 'error');
-        return;
-    }
-    
-    const randomResource = Math.floor(Math.random() * state.resources.length);
-    const faultAmount = Math.floor(Math.random() * 3) + 1;
-    
-    state.available[randomResource] = Math.max(0, state.available[randomResource] - faultAmount);
-    renderAvailable();
-    showToast(`Injected fault: -${faultAmount} ${state.resources[randomResource]}`, 'warning');
-}
-
-function updateFaultValue(value) {
-    document.getElementById('faultValue').textContent = value;
-}
-
-function injectManualFault() {
-    const faultAmount = parseInt(document.getElementById('faultSlider').value);
-    if (faultAmount <= 0) {
-        showToast('Set fault amount greater than 0', 'error');
-        return;
-    }
-    
-    if (state.resources.length === 0) {
-        showToast('No resources to inject fault', 'error');
-        return;
-    }
-    
-    // Apply fault to first resource
-    state.available[0] = Math.max(0, state.available[0] - faultAmount);
-    renderAvailable();
-    showToast(`Manual fault applied: -${faultAmount} ${state.resources[0]}`, 'warning');
-    
-    // Reset slider
-    document.getElementById('faultSlider').value = 0;
-    document.getElementById('faultValue').textContent = '0';
-}
-
-// Reset System
-function resetSystem() {
-    state = {
-        processes: ['P0', 'P1', 'P2', 'P3', 'P4'],
-        resources: ['A', 'B', 'C'],
-        allocation: [
-            [0, 1, 0],
-            [2, 0, 0],
-            [3, 0, 2],
-            [2, 1, 1],
-            [0, 0, 2]
-        ],
-        max: [
-            [7, 5, 3],
-            [3, 2, 2],
-            [9, 0, 2],
-            [2, 2, 2],
-            [4, 3, 3]
-        ],
-        available: [3, 3, 2],
-        history: []
+    const statusMap = {
+        'IDLE': 'Not initialized',
+        'INITIALIZED': 'Ready',
+        'SAFE': 'SAFE',
+        'UNSAFE': 'UNSAFE',
+        'RUNNING': 'Running',
+        'PAUSED': 'Paused',
+        'FAULT': 'Fault detected',
+        'RECOVERY': 'Recovering',
+        'COMPLETED': 'Completed'
     };
     
-    initializeUI();
-    document.getElementById('simulationResults').classList.remove('active');
-    updateSystemStatus('ready');
-    renderHistory();
-    showToast('System reset to default state', 'success');
-}
-
-// History Management
-function addToHistory(result) {
-    const timestamp = new Date().toLocaleTimeString();
-    state.history.unshift({
-        timestamp,
-        isSafe: result.isSafe,
-        sequence: result.safeSequence
-    });
+    const statusClass = simulationState === 'SAFE' ? 'status-safe' : 
+                       simulationState === 'UNSAFE' ? 'status-unsafe' : 'status-warning';
     
-    // Keep only last 10 entries
-    if (state.history.length > 10) {
-        state.history.pop();
-    }
-    
-    renderHistory();
-}
-
-function renderHistory() {
-    const panel = document.getElementById('historyPanel');
-    
-    if (state.history.length === 0) {
-        panel.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 20px;">No simulations run yet</p>';
-        return;
-    }
-    
-    panel.innerHTML = state.history.map(entry => `
-        <div class="history-item">
-            <div>
-                <div class="history-result ${entry.isSafe ? 'safe' : 'unsafe'}">
-                    ${entry.isSafe ? '✅ Safe' : '⚠️ Unsafe'}
-                </div>
-                <div class="history-time">${entry.timestamp}</div>
-            </div>
-            <div style="font-size: 0.85rem; color: var(--text-secondary);">
-                ${entry.sequence.length > 0 ? entry.sequence.join(' → ') : 'No sequence'}
-            </div>
+    statusContainer.innerHTML = `
+        <div class="status-badge ${statusClass}" style="margin-bottom: 16px;">
+            ${simulationState === 'SAFE' ? '✅' : simulationState === 'UNSAFE' ? '⚠️' : '⏳'} ${statusMap[simulationState] || simulationState}
         </div>
-    `).join('');
-}
-
-function clearHistory() {
-    state.history = [];
-    renderHistory();
-    showToast('History cleared', 'success');
-}
-
-// Save/Load State
-function saveState() {
-    localStorage.setItem('bankerState', JSON.stringify(state));
-    showToast('State saved to browser', 'success');
-}
-
-function loadState() {
-    const saved = localStorage.getItem('bankerState');
-    if (saved) {
-        state = JSON.parse(saved);
-        initializeUI();
-        renderHistory();
-        showToast('State loaded from browser', 'success');
-    } else {
-        showToast('No saved state found', 'error');
-    }
-}
-
-function loadFromLocalStorage() {
-    const saved = localStorage.getItem('bankerState');
-    if (saved) {
-        state = JSON.parse(saved);
-        initializeUI();
-        renderHistory();
-    }
+        <p style="color: var(--text-secondary);">
+            ${simulationState === 'SAFE' ? 'System is in safe state. All processes can complete without deadlock.' :
+              simulationState === 'UNSAFE' ? 'System is in unsafe state. Deadlock may occur. Use recovery options.' :
+              simulationState === 'RUNNING' ? 'Simulation is running. Use controls to pause or step.' :
+              'Ready to start simulation.'}
+        </p>
+    `;
 }
 
 // Toast Notifications
@@ -661,339 +576,101 @@ function showLoading(show) {
     }
 }
 
-// Toggle Request Panel
-function toggleRequestPanel() {
-    const panel = document.getElementById('requestPanel');
-    const isVisible = panel.style.display !== 'none';
-    panel.style.display = isVisible ? 'none' : 'block';
-    
-    if (!isVisible) {
-        populateRequestPanel();
-    }
-}
-
-// Populate Request Panel
-function populateRequestPanel() {
-    const processSelect = document.getElementById('requestProcess');
-    processSelect.innerHTML = state.processes.map((process, index) => 
-        `<option value="${index}">${process}</option>`
-    ).join('');
-    
-    const resourcesContainer = document.getElementById('requestResources');
-    resourcesContainer.innerHTML = state.resources.map((resource, index) => `
-        <div class="request-form-row">
-            <label>${resource} Request:</label>
-            <input type="number" id="request_${index}" value="0" min="0" max="10">
-        </div>
-    `).join('');
-}
-
-// Simulate Resource Request
-function simulateRequest() {
-    const processIndex = parseInt(document.getElementById('requestProcess').value);
-    const request = state.resources.map((_, index) => 
-        parseInt(document.getElementById(`request_${index}`).value) || 0
-    );
-    
-    // Banker's Request Algorithm
-    const n = state.processes.length;
-    const m = state.resources.length;
-    
-    // Step 1: Check if Request <= Need
-    const need = state.max.map((maxRow, i) => 
-        maxRow.map((maxVal, j) => Math.max(0, maxVal - state.allocation[i][j]))
-    );
-    
-    let validRequest = true;
-    for (let j = 0; j < m; j++) {
-        if (request[j] > need[processIndex][j]) {
-            validRequest = false;
-            break;
-        }
-    }
-    
-    if (!validRequest) {
-        showRequestResult(false, 'Request exceeds process need. Process cannot request more than its maximum need.');
+// Add Process
+function addProcess() {
+    if (state.initialized) {
+        showToast('Cannot add processes after initialization. Reset system first.', 'error');
         return;
     }
     
-    // Step 2: Check if Request <= Available
-    let canAllocate = true;
-    for (let j = 0; j < m; j++) {
-        if (request[j] > state.available[j]) {
-            canAllocate = false;
-            break;
-        }
-    }
+    const newProcessIndex = state.processes.length;
+    state.processes.push(`P${newProcessIndex}`);
+    state.allocation.push(new Array(state.resources.length).fill(0));
+    state.max.push(new Array(state.resources.length).fill(0));
     
-    if (!canAllocate) {
-        showRequestResult(false, 'Request exceeds available resources. Process must wait.');
-        return;
-    }
-    
-    // Step 3: Pretend to allocate and check safety
-    const tempAvailable = [...state.available];
-    const tempAllocation = state.allocation.map(row => [...row]);
-    const tempNeed = need.map(row => [...row]);
-    
-    for (let j = 0; j < m; j++) {
-        tempAvailable[j] -= request[j];
-        tempAllocation[processIndex][j] += request[j];
-        tempNeed[processIndex][j] -= request[j];
-    }
-    
-    // Check if system remains safe
-    const isSafe = checkSafety(tempAllocation, state.max, tempAvailable, n, m);
-    
-    if (isSafe) {
-        showRequestResult(true, 'Request can be safely granted. System will remain in safe state.', true);
-    } else {
-        showRequestResult(false, 'Request would lead to unsafe state. Process must wait to avoid deadlock.');
-    }
-}
-
-// Check Safety (helper function)
-function checkSafety(allocation, max, available, n, m) {
-    const need = max.map((maxRow, i) => 
-        maxRow.map((maxVal, j) => Math.max(0, maxVal - allocation[i][j]))
-    );
-    
-    const work = [...available];
-    const finish = new Array(n).fill(false);
-    let count = 0;
-    
-    while (count < n) {
-        let found = false;
-        for (let i = 0; i < n; i++) {
-            if (!finish[i]) {
-                let canRun = true;
-                for (let j = 0; j < m; j++) {
-                    if (need[i][j] > work[j]) {
-                        canRun = false;
-                        break;
-                    }
-                }
-                
-                if (canRun) {
-                    for (let j = 0; j < m; j++) {
-                        work[j] += allocation[i][j];
-                    }
-                    finish[i] = true;
-                    found = true;
-                    count++;
-                }
-            }
-        }
-        
-        if (!found) return false;
-    }
-    
-    return true;
-}
-
-// Show Request Result
-function showRequestResult(safe, message, canApply = false) {
-    const resultDiv = document.getElementById('requestResult');
-    const applyBtn = document.getElementById('applyRequestBtn');
-    
-    resultDiv.style.display = 'block';
-    resultDiv.className = `request-result ${safe ? 'safe' : 'unsafe'}`;
-    resultDiv.innerHTML = `
-        <h4 style="margin-bottom: 8px; font-weight: 700;">
-            ${safe ? '✅ Safe Request' : '⚠️ Unsafe Request'}
-        </h4>
-        <p style="margin: 0; color: var(--text-secondary);">${message}</p>
-    `;
-    
-    applyBtn.style.display = canApply ? 'inline-flex' : 'none';
-    
-    // Store current request for application
-    if (canApply) {
-        state.pendingRequest = {
-            processIndex: parseInt(document.getElementById('requestProcess').value),
-            request: state.resources.map((_, index) => 
-                parseInt(document.getElementById(`request_${index}`).value) || 0
-            )
-        };
-    }
-}
-
-// Apply Request
-function applyRequest() {
-    if (!state.pendingRequest) return;
-    
-    const { processIndex, request } = state.pendingRequest;
-    
-    // Apply the request
-    for (let j = 0; j < state.resources.length; j++) {
-        state.available[j] -= request[j];
-        state.allocation[processIndex][j] += request[j];
-    }
-    
-    // Update UI
-    renderAvailable();
-    renderAllocation();
-    renderNeed();
-    
-    // Hide panel and show success
-    toggleRequestPanel();
-    showToast('Request applied successfully', 'success');
-    
-    // Run simulation to show new state
-    runSimulation();
-    
-    delete state.pendingRequest;
-}
-
-// Analyze Deadlock Recovery
-function analyzeDeadlockRecovery() {
-    showLoading(true);
-    
-    setTimeout(() => {
-        const recoveryPanel = document.getElementById('recoveryPanel');
-        const recoveryOptions = document.getElementById('recoveryOptions');
-        
-        recoveryPanel.style.display = 'block';
-        
-        const solutions = generateRecoverySolutions();
-        
-        recoveryOptions.innerHTML = solutions.map((solution, index) => `
-            <div class="recovery-option">
-                <h4>${index + 1}. ${solution.title}</h4>
-                <p>${solution.description}</p>
-                <ul class="recovery-steps">
-                    ${solution.steps.map(step => `<li>${step}</li>`).join('')}
-                </ul>
-                <button class="btn btn-sm btn-primary" onclick="applyRecovery(${index})" style="margin-top: 12px;">
-                    Apply This Solution
-                </button>
-            </div>
-        `).join('');
-        
-        showLoading(false);
-        showToast('Recovery analysis complete', 'info');
-    }, 500);
-}
-
-// Generate Recovery Solutions
-function generateRecoverySolutions() {
-    const solutions = [];
-    const n = state.processes.length;
-    const m = state.resources.length;
-    
-    // Solution 1: Process Termination (least resources allocated)
-    const allocationSums = state.allocation.map((row, i) => ({
-        process: i,
-        total: row.reduce((a, b) => a + b, 0)
-    }));
-    
-    allocationSums.sort((a, b) => a.total - b.total);
-    
-    solutions.push({
-        title: 'Terminate Process with Least Resources',
-        description: `Terminate ${state.processes[allocationSums[0].process]} which holds the fewest resources (${allocationSums[0].total} total). This minimizes resource loss.`,
-        steps: [
-            `Terminate ${state.processes[allocationSums[0].process]}`,
-            `Release all allocated resources back to available pool`,
-            `Updated Available: [${state.available.map((a, i) => a + state.allocation[allocationSums[0].process][i]).join(', ')}]`,
-            'Re-run safety check'
-        ],
-        processIndex: allocationSums[0].process
-    });
-    
-    // Solution 2: Resource Preemption from high-allocation process
-    const maxAllocation = allocationSums[allocationSums.length - 1];
-    solutions.push({
-        title: 'Preempt Resources from High-Usage Process',
-        description: `Preempt half of resources from ${state.processes[maxAllocation.process]} which holds the most resources.`,
-        steps: [
-            `Preempt 50% of resources from ${state.processes[maxAllocation.process]}`,
-            `Add preempted resources to available pool`,
-            'Process will need to restart and re-request resources',
-            'Re-run safety check'
-        ],
-        processIndex: maxAllocation.process,
-        preempt: true
-    });
-    
-    // Solution 3: Terminate multiple processes if needed
-    if (n > 2) {
-        solutions.push({
-            title: 'Terminate Multiple Processes',
-            description: `Terminate ${state.processes[allocationSums[0].process]} and ${state.processes[allocationSums[1].process]} to free more resources.`,
-            steps: [
-                `Terminate ${state.processes[allocationSums[0].process]} and ${state.processes[allocationSums[1].process]}`,
-                `Release all allocated resources from both processes`,
-                `Updated Available: [${state.available.map((a, i) => a + state.allocation[allocationSums[0].process][i] + state.allocation[allocationSums[1].process][i]).join(', ')}]`,
-                'Re-run safety check'
-            ],
-            processIndex: [allocationSums[0].process, allocationSums[1].process],
-            multiple: true
-        });
-    }
-    
-    return solutions;
-}
-
-// Apply Recovery Solution
-function applyRecovery(solutionIndex) {
-    const solutions = generateRecoverySolutions();
-    const solution = solutions[solutionIndex];
-    
-    if (solution.multiple) {
-        // Terminate multiple processes
-        solution.processIndex.forEach(procIndex => {
-            for (let j = 0; j < state.resources.length; j++) {
-                state.available[j] += state.allocation[procIndex][j];
-                state.allocation[procIndex][j] = 0;
-                state.max[procIndex][j] = 0;
-            }
-        });
-        
-        // Remove processes
-        const processesToRemove = solution.processIndex.sort((a, b) => b - a);
-        processesToRemove.forEach(index => {
-            state.processes.splice(index, 1);
-            state.allocation.splice(index, 1);
-            state.max.splice(index, 1);
-        });
-        
-        // Rename processes
-        state.processes = state.processes.map((_, i) => `P${i}`);
-    } else if (solution.preempt) {
-        // Resource preemption
-        const procIndex = solution.processIndex;
-        for (let j = 0; j < state.resources.length; j++) {
-            const preemptAmount = Math.ceil(state.allocation[procIndex][j] / 2);
-            state.available[j] += preemptAmount;
-            state.allocation[procIndex][j] -= preemptAmount;
-        }
-    } else {
-        // Single process termination
-        const procIndex = solution.processIndex;
-        for (let j = 0; j < state.resources.length; j++) {
-            state.available[j] += state.allocation[procIndex][j];
-        }
-        
-        state.processes.splice(procIndex, 1);
-        state.allocation.splice(procIndex, 1);
-        state.max.splice(procIndex, 1);
-        
-        // Rename processes
-        state.processes = state.processes.map((_, i) => `P${i}`);
-    }
-    
-    // Update UI
-    renderAvailable();
+    renderResourceBars();
+    renderProcessCards();
     renderAllocation();
     renderMax();
     renderNeed();
+    showToast(`Process P${newProcessIndex} added`, 'success');
+}
+
+// Remove Process
+function removeLastProcess() {
+    if (state.initialized) {
+        showToast('Cannot remove processes after initialization. Reset system first.', 'error');
+        return;
+    }
     
-    // Hide recovery panel
-    document.getElementById('recoveryPanel').style.display = 'none';
+    if (state.processes.length <= 1) {
+        showToast('Cannot remove the last process', 'error');
+        return;
+    }
     
-    // Run simulation to check new state
-    runSimulation();
+    const removedProcess = state.processes.pop();
+    state.allocation.pop();
+    state.max.pop();
     
-    showToast('Recovery solution applied', 'success');
+    renderResourceBars();
+    renderProcessCards();
+    renderAllocation();
+    renderMax();
+    renderNeed();
+    showToast(`${removedProcess} removed`, 'success');
+}
+
+// Add Resource
+function addResource() {
+    if (state.initialized) {
+        showToast('Cannot add resources after initialization. Reset system first.', 'error');
+        return;
+    }
+    
+    const resourceNames = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const newResourceIndex = state.resources.length;
+    if (newResourceIndex >= resourceNames.length) {
+        showToast('Maximum resource types reached', 'error');
+        return;
+    }
+    
+    const newResource = resourceNames[newResourceIndex];
+    state.resources.push(newResource);
+    state.available.push(0);
+    state.totalResources.push(5);
+    state.allocation.forEach(row => row.push(0));
+    state.max.forEach(row => row.push(0));
+    
+    renderResourceBars();
+    renderProcessCards();
+    renderAllocation();
+    renderMax();
+    renderNeed();
+    showToast(`Resource ${newResource} added`, 'success');
+}
+
+// Remove Resource
+function removeLastResource() {
+    if (state.initialized) {
+        showToast('Cannot remove resources after initialization. Reset system first.', 'error');
+        return;
+    }
+    
+    if (state.resources.length <= 1) {
+        showToast('Cannot remove the last resource', 'error');
+        return;
+    }
+    
+    const removedResource = state.resources.pop();
+    state.available.pop();
+    state.totalResources.pop();
+    state.allocation.forEach(row => row.pop());
+    state.max.forEach(row => row.pop());
+    
+    renderResourceBars();
+    renderProcessCards();
+    renderAllocation();
+    renderMax();
+    renderNeed();
+    showToast(`Resource ${removedResource} removed`, 'success');
 }

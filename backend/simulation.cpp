@@ -8,174 +8,370 @@ using namespace std;
 // Constructor
 Simulation::Simulation()
 {
-    processCount = 0;
-    resourceCount = 0;
+    state.processCount = 0;
+    state.resourceCount = 0;
+    state.simulationState = IDLE;
+    state.currentStep = 0;
+    state.simulationFinished = false;
+    state.simulationSpeed = 1000; // Default 1 second per step
+    timelineCounter = 0;
+}
 
-    safeState = false;
-    simulationRunning = false;
-    simulationPaused = false;
-    faultOccurred = false;
+// Get Current Timestamp
+long long Simulation::getCurrentTimestamp()
+{
+    auto now = chrono::system_clock::now();
+    auto duration = now.time_since_epoch();
+    return chrono::duration_cast<chrono::milliseconds>(duration).count();
 }
 
 // Initialize System
-void Simulation::initialize()
+bool Simulation::initialize(int processCount, int resourceCount,
+                           const vector<vector<int>>& allocation,
+                           const vector<vector<int>>& maximum,
+                           const vector<int>& available)
 {
-    cout << "Dynamic Banker's Algorithm Simulator\n\n";
+    if (processCount <= 0 || resourceCount <= 0)
+        return false;
 
-    cout << "Enter Number of Processes: ";
-    cin >> processCount;
+    if (allocation.size() != processCount || maximum.size() != processCount)
+        return false;
 
-    cout << "Enter Number of Resource Types: ";
-    cin >> resourceCount;
+    if (available.size() != resourceCount)
+        return false;
 
-    allocation.resize(processCount, vector<int>(resourceCount));
-    maximum.resize(processCount, vector<int>(resourceCount));
-    need.resize(processCount, vector<int>(resourceCount));
-    available.resize(resourceCount);
+    state.processCount = processCount;
+    state.resourceCount = resourceCount;
+    state.allocation = allocation;
+    state.maximum = maximum;
+    state.available = available;
+    state.totalResources = available;
 
-    cout << "\nEnter Allocation Matrix\n";
-
+    // Initialize need matrix
+    state.need.assign(processCount, vector<int>(resourceCount));
     for (int i = 0; i < processCount; i++)
     {
         for (int j = 0; j < resourceCount; j++)
         {
-            cin >> allocation[i][j];
+            state.need[i][j] = state.maximum[i][j] - state.allocation[i][j];
         }
     }
 
-    cout << "\nEnter Maximum Matrix\n";
-
+    // Initialize processes
+    state.processes.clear();
     for (int i = 0; i < processCount; i++)
     {
-        for (int j = 0; j < resourceCount; j++)
-        {
-            cin >> maximum[i][j];
-        }
+        Process p;
+        p.id = i;
+        p.status = WAITING;
+        p.progress = 0;
+        state.processes.push_back(p);
     }
 
-    cout << "\nEnter Available Resources\n";
+    state.currentStep = 0;
+    state.simulationFinished = false;
+    state.simulationState = INITIALIZED;
+    state.faultHistory.clear();
+    state.recoveryHistory.clear();
+    state.timeline.clear();
+    timelineCounter = 0;
 
-    for (int i = 0; i < resourceCount; i++)
+    addTimelineEvent("System initialized");
+
+    return true;
+}
+
+// Initialize System with Total Resources
+bool Simulation::initializeWithTotal(int processCount, int resourceCount,
+                                     const vector<vector<int>>& allocation,
+                                     const vector<vector<int>>& maximum,
+                                     const vector<int>& available,
+                                     const vector<int>& totalResources)
+{
+    if (!initialize(processCount, resourceCount, allocation, maximum, available))
+        return false;
+
+    state.totalResources = totalResources;
+    return true;
+}
+
+// Get Current State
+SystemState& Simulation::getState()
+{
+    return state;
+}
+
+// Reset Simulation
+void Simulation::reset()
+{
+    state.currentStep = 0;
+    state.simulationFinished = false;
+    state.simulationState = INITIALIZED;
+    state.faultHistory.clear();
+    state.recoveryHistory.clear();
+    state.timeline.clear();
+    timelineCounter = 0;
+
+    // Reset process statuses
+    for (auto& process : state.processes)
     {
-        cin >> available[i];
+        process.status = WAITING;
+        process.progress = 0;
     }
 
-    calculateNeed();
+    addTimelineEvent("Simulation reset");
 }
 
-
-// Need Matrix
-void Simulation::calculateNeed()
+// Run Complete Simulation
+bool Simulation::run()
 {
-    for (int i = 0; i < processCount; i++)
+    if (state.simulationState != INITIALIZED && state.simulationState != PAUSED)
+        return false;
+
+    banker.calculateNeed(state);
+
+    if (!banker.checkSafeState(state))
     {
-        for (int j = 0; j < resourceCount; j++)
-        {
-            need[i][j] = maximum[i][j] - allocation[i][j];
-        }
+        state.simulationState = UNSAFE;
+        addTimelineEvent("System is in unsafe state");
+        return false;
     }
+
+    state.simulationState = RUNNING_STATE;
+    addTimelineEvent("Simulation started");
+
+    return true;
 }
 
-// Display Current System
-void Simulation::displaySystem()
+// Run One Step
+bool Simulation::runOneStep()
 {
-    cout << "Current System State";
-    cout << "\nAllocation Matrix\n";
+    if (state.simulationState != RUNNING_STATE)
+        return false;
 
-    for (int i = 0; i < processCount; i++)
+    if (state.simulationFinished)
+        return false;
+
+    if (state.currentStep >= state.safeSequence.size())
     {
-        for (int j = 0; j < resourceCount; j++)
-        {
-            cout << setw(5) << allocation[i][j];
-        }
-        cout << endl;
+        state.simulationFinished = true;
+        state.simulationState = COMPLETED;
+        addTimelineEvent("Simulation completed");
+        return false;
     }
 
-    cout << "\nMaximum Matrix\n";
+    int processID = state.safeSequence[state.currentStep];
 
-    for (int i = 0; i < processCount; i++)
+    // Skip suspended or terminated processes
+    if (state.processes[processID].status == SUSPENDED)
     {
-        for (int j = 0; j < resourceCount; j++)
-        {
-            cout << setw(5) << maximum[i][j];
-        }
-        cout << endl;
+        addTimelineEvent("Skipped suspended process P" + to_string(processID), processID);
+        state.currentStep++;
+        return true;
     }
 
-    cout << "\nNeed Matrix\n";
-
-    for (int i = 0; i < processCount; i++)
+    if (state.processes[processID].status == TERMINATED)
     {
-        for (int j = 0; j < resourceCount; j++)
-        {
-            cout << setw(5) << need[i][j];
-        }
-        cout << endl;
+        addTimelineEvent("Skipped terminated process P" + to_string(processID), processID);
+        state.currentStep++;
+        return true;
     }
 
-    cout << "\nAvailable Resources\n";
+    // Run process
+    state.processes[processID].status = RUNNING;
+    state.processes[processID].progress = 50;
+    addTimelineEvent("P" + to_string(processID) + " started execution", processID);
 
-    for (int i = 0; i < resourceCount; i++)
+    // Release allocated resources
+    for (int i = 0; i < state.resourceCount; i++)
     {
-        cout << setw(5) << available[i];
+        state.available[i] += state.allocation[processID][i];
     }
 
-    cout << endl;
+    state.processes[processID].status = FINISHED;
+    state.processes[processID].progress = 100;
+    addTimelineEvent("P" + to_string(processID) + " finished and released resources", processID);
+
+    state.currentStep++;
+
+    // Check if simulation is complete
+    if (state.currentStep == state.safeSequence.size())
+    {
+        state.simulationFinished = true;
+        state.simulationState = COMPLETED;
+        addTimelineEvent("All processes completed successfully");
+    }
+
+    return true;
 }
 
-// Start Simulation
-void Simulation::startSimulation()
+// Pause Simulation
+void Simulation::pause()
 {
-    simulationRunning = true;
-    simulationPaused = false;
-
-    cout << "\nSimulation Started...\n";
+    if (state.simulationState == RUNNING_STATE)
+    {
+        state.simulationState = PAUSED;
+        addTimelineEvent("Simulation paused");
+    }
 }
 
-
-// Pause
-void Simulation::pauseSimulation()
+// Resume Simulation
+void Simulation::resume()
 {
-    simulationPaused = true;
-
-    cout << "\nSimulation Paused.\n";
+    if (state.simulationState == PAUSED)
+    {
+        state.simulationState = RUNNING_STATE;
+        addTimelineEvent("Simulation resumed");
+    }
 }
 
-
-// Resume
-void Simulation::resumeSimulation()
+// Set Simulation Speed
+void Simulation::setSimulationSpeed(int speed)
 {
-    simulationPaused = false;
-
-    cout << "\nSimulation Resumed.\n";
+    if (speed >= 100 && speed <= 10000)
+    {
+        state.simulationSpeed = speed;
+    }
 }
 
-
-// Fault
-void Simulation::injectFault()
+// Get Simulation Speed
+int Simulation::getSimulationSpeed()
 {
-    faultOccurred = true;
-
-    cout << "\nRuntime Fault Injected.\n";
+    return state.simulationSpeed;
 }
 
-
-// Recovery
-void Simulation::recoverSystem()
+// Inject Fault
+FaultEvent Simulation::injectFault(FaultType type, int resourceID, int unitsLost)
 {
-    faultOccurred = false;
+    FaultEvent fault;
 
-    cout << "\nRecovery Completed.\n";
+    if (state.simulationState != RUNNING_STATE)
+    {
+        fault.description = "Simulation is not running";
+        return fault;
+    }
+
+    switch (type)
+    {
+        case RESOURCE_LOSS:
+            fault = faultEngine.injectResourceLoss(state, resourceID, unitsLost);
+            break;
+        case MEMORY_FRAGMENTATION:
+            fault = faultEngine.injectMemoryFragmentation(state, resourceID, unitsLost);
+            break;
+        case HARDWARE_FAILURE:
+            fault = faultEngine.injectHardwareFailure(state, resourceID, unitsLost);
+            break;
+    }
+
+    addTimelineEvent("Fault injected: " + fault.description);
+
+    // Recalculate safety
+    banker.calculateNeed(state);
+    bool safe = banker.checkSafeState(state);
+
+    if (safe)
+    {
+        state.simulationState = RUNNING_STATE;
+        addTimelineEvent("System remains safe after fault");
+    }
+    else
+    {
+        state.simulationState = UNSAFE;
+        addTimelineEvent("System became unsafe after fault");
+    }
+
+    return fault;
 }
 
-
-// Status
-bool Simulation::isRunning()
+// Apply Recovery
+RecoveryAction Simulation::recover(RecoveryType type, int processID,
+                                  int resourceID, int units,
+                                  int fromProcess, int toProcess)
 {
-    return simulationRunning;
+    RecoveryAction action;
+
+    switch (type)
+    {
+        case RESTORE_RESOURCE:
+            action = recoveryEngine.restoreResource(state, resourceID, units);
+            break;
+        case SUSPEND_PROCESS:
+            action = recoveryEngine.suspendProcess(state, processID);
+            break;
+        case RESUME_PROCESS:
+            action = recoveryEngine.resumeProcess(state, processID);
+            break;
+        case TERMINATE_PROCESS:
+            action = recoveryEngine.terminateProcess(state, processID);
+            break;
+        case MANUAL_REALLOCATION:
+            action = recoveryEngine.manualReallocation(state, fromProcess, toProcess, resourceID, units);
+            break;
+    }
+
+    addTimelineEvent("Recovery applied: " + action.message);
+
+    // Recalculate safety
+    banker.calculateNeed(state);
+    bool safe = banker.checkSafeState(state);
+
+    if (safe)
+    {
+        state.simulationState = RUNNING_STATE;
+        addTimelineEvent("System recovered to safe state");
+    }
+    else
+    {
+        state.simulationState = UNSAFE;
+        addTimelineEvent("System still unsafe after recovery");
+    }
+
+    return action;
 }
 
-bool Simulation::isPaused()
+// Add Timeline Event
+void Simulation::addTimelineEvent(const string& event, int processID)
 {
-    return simulationPaused;
+    TimelineEvent te;
+    te.id = timelineCounter++;
+    te.event = event;
+    te.processID = processID;
+    te.available = state.available;
+    te.safe = (state.simulationState == SAFE || state.simulationState == RUNNING_STATE || state.simulationState == INITIALIZED);
+    te.timestamp = getCurrentTimestamp();
+    state.timeline.push_back(te);
+}
+
+// Get Timeline
+vector<TimelineEvent> Simulation::getTimeline()
+{
+    return state.timeline;
+}
+
+// Clear Timeline
+void Simulation::clearTimeline()
+{
+    state.timeline.clear();
+    timelineCounter = 0;
+}
+
+// Check if System is Safe
+bool Simulation::isSafe()
+{
+    banker.calculateNeed(state);
+    return banker.checkSafeState(state);
+}
+
+// Get Safe Sequence
+vector<int> Simulation::getSafeSequence()
+{
+    banker.calculateNeed(state);
+    return banker.getSafeSequence(state);
+}
+
+// Validate Current State
+bool Simulation::validateState()
+{
+    return banker.validateAllocation(state) && banker.validateMaximum(state);
 }
