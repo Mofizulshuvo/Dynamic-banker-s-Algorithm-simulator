@@ -89,4 +89,26 @@ struct ExecutionStep
     string message;
 };
 
+
+// Complete System State
+// Shared by all modules
+
+struct SystemState
+{
+    int processCount;
+    int resourceCount;
+
+    vector<vector<int>> allocation;
+    vector<vector<int>> maximum;
+    vector<vector<int>> need;
+
+    vector<int> available;
+
+    vector<int> safeSequence;
+
+    vector<Process> processes;
+
+    SimulationState simulationState;
+};
+
 #endif
