@@ -26,14 +26,14 @@
                 </div>
                 <div class="header-controls">
                     <div class="theme-toggle active-light" id="themeToggle">
-                        <span class="light-mode">☀️ Light</span>
-                        <span class="dark-mode">🌙 Dark</span>
+                        <span class="light-mode"> Light</span>
+                        <span class="dark-mode"> Dark</span>
                     </div>
                     <button class="btn btn-outline" onclick="downloadInput()">
-                        💾 Download Input
+                         Download Input
                     </button>
                     <button class="btn btn-outline" onclick="document.getElementById('uploadInput').click()">
-                        📂 Upload Input
+                         Upload Input
                     </button>
                     <input type="file" id="uploadInput" accept=".json" style="display: none" onchange="uploadInputFile(event)">
                 </div>
@@ -55,28 +55,28 @@
                 </div>
                 <div class="card-actions">
                     <button class="btn btn-primary" onclick="runSimulation()">
-                        ▶️ Run Simulation
+                         Run Simulation
                     </button>
                     <button class="btn btn-warning" onclick="resetSystem()">
-                        🔄 Reset
+                         Reset
                     </button>
                 </div>
             </div>
             <div class="fault-controls">
                 <button class="btn btn-success" onclick="addProcess()">
-                    ➕ Add Process
+                     ➕ Add Process
                 </button>
                 <button class="btn btn-success" onclick="addResource()">
-                    ➕ Add Resource
+                     ➕ Add Resource
                 </button>
                 <button class="btn btn-danger" onclick="removeLastProcess()">
-                    ➖ Remove Process
+                     ➖ Remove Process
                 </button>
                 <button class="btn btn-danger" onclick="removeLastResource()">
-                    ➖ Remove Resource
+                     ➖ Remove Resource
                 </button>
                 <button class="btn btn-danger" onclick="injectRandomFault()">
-                    ⚡ Random Fault
+                     ⚡ Random Fault
                 </button>
                 <div class="fault-slider">
                     <label style="font-size: 0.85rem; color: var(--text-secondary);">Manual Fault:</label>
@@ -84,7 +84,13 @@
                     <span class="fault-value" id="faultValue">0</span>
                 </div>
                 <button class="btn btn-danger" onclick="injectManualFault()">
-                    🔧 Apply Fault
+                     🔧 Apply Fault
+                </button>
+                <button class="btn btn-info" onclick="toggleRequestPanel()">
+                     🔄 Request Simulation
+                </button>
+                <button class="btn btn-warning" onclick="analyzeDeadlockRecovery()">
+                     🚨 Recovery Analysis
                 </button>
             </div>
         </div>
@@ -132,7 +138,7 @@
                         ⏳ Ready for simulation
                     </div>
                     <div class="help-section">
-                        <h3>💡 Quick Guide</h3>
+                        <h3> Quick Guide</h3>
                         <p>1. Edit the matrices below or use the controls above</p>
                         <p>2. Click "Download Input" to save input.json</p>
                         <p>3. Run C++ backend (run.bat or manually)</p>
@@ -255,6 +261,59 @@
                 <h4 style="margin-bottom: 12px; color: var(--text-secondary);">Safe Sequence:</h4>
                 <div class="safe-sequence" id="safeSequence">
                     <!-- Dynamic content -->
+                </div>
+            </div>
+            
+            <!-- Deadlock Recovery Panel -->
+            <div class="recovery-panel" id="recoveryPanel" style="display: none;">
+                <h3>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="24" height="24">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                        <line x1="12" y1="9" x2="12" y2="13"></line>
+                        <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                    </svg>
+                    Deadlock Recovery Solutions
+                </h3>
+                <div id="recoveryOptions">
+                    <!-- Dynamic content -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Resource Request Simulation Panel -->
+        <div class="card" id="requestPanel" style="display: none; margin-top: 24px;">
+            <div class="card-header">
+                <div class="card-title">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <polyline points="12 6 12 12 16 14"></polyline>
+                    </svg>
+                    Resource Request Simulation
+                </div>
+                <button class="btn btn-outline" onclick="toggleRequestPanel()">
+                    ✕ Close
+                </button>
+            </div>
+            <div class="request-form">
+                <div class="request-form-row">
+                    <label>Process:</label>
+                    <select id="requestProcess">
+                        <!-- Dynamic content -->
+                    </select>
+                </div>
+                <div id="requestResources">
+                    <!-- Dynamic resource inputs -->
+                </div>
+                <div style="margin-top: 16px;">
+                    <button class="btn btn-primary" onclick="simulateRequest()">
+                        🔄 Simulate Request
+                    </button>
+                    <button class="btn btn-success" onclick="applyRequest()" id="applyRequestBtn" style="display: none;">
+                        ✅ Apply Request
+                    </button>
+                </div>
+                <div class="request-result" id="requestResult" style="display: none;">
+                    <!-- Dynamic result -->
                 </div>
             </div>
         </div>

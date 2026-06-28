@@ -59,8 +59,7 @@ function renderAvailable() {
             <input type="number" 
                    value="${state.available[index]}" 
                    min="0" 
-                   onchange="updateAvailable(${index}, this.value)"
-                   oninput="updateAvailable(${index}, this.value)">
+                   onchange="updateAvailable(${index}, this.value)">
         </div>
     `).join('');
 }
@@ -69,6 +68,7 @@ function updateAvailable(index, value) {
     const numValue = parseInt(value) || 0;
     if (numValue < 0) {
         showToast('Available resources cannot be negative', 'error');
+        renderAvailable();
         return;
     }
     state.available[index] = numValue;
@@ -90,8 +90,8 @@ function renderAllocation() {
             html += `<td><input type="number" 
                            value="${state.allocation[pIndex][rIndex]}" 
                            min="0" 
-                           onchange="updateAllocation(${pIndex}, ${rIndex}, this.value)"
-                           oninput="updateAllocation(${pIndex}, ${rIndex}, this.value)"></td>`;
+                           max="${state.max[pIndex][rIndex]}"
+                           onchange="updateAllocation(${pIndex}, ${rIndex}, this.value)"></td>`;
         });
         html += '</tr>';
     });
@@ -104,6 +104,12 @@ function updateAllocation(pIndex, rIndex, value) {
     const numValue = parseInt(value) || 0;
     if (numValue < 0) {
         showToast('Allocation cannot be negative', 'error');
+        renderAllocation();
+        return;
+    }
+    if (numValue > state.max[pIndex][rIndex]) {
+        showToast('Allocation cannot exceed Max value', 'error');
+        renderAllocation();
         return;
     }
     state.allocation[pIndex][rIndex] = numValue;
@@ -125,8 +131,7 @@ function renderMax() {
             html += `<td><input type="number" 
                            value="${state.max[pIndex][rIndex]}" 
                            min="0" 
-                           onchange="updateMax(${pIndex}, ${rIndex}, this.value)"
-                           oninput="updateMax(${pIndex}, ${rIndex}, this.value)"></td>`;
+                           onchange="updateMax(${pIndex}, ${rIndex}, this.value)"></td>`;
         });
         html += '</tr>';
     });
@@ -654,4 +659,341 @@ function showLoading(show) {
     } else {
         overlay.classList.remove('active');
     }
+}
+
+// Toggle Request Panel
+function toggleRequestPanel() {
+    const panel = document.getElementById('requestPanel');
+    const isVisible = panel.style.display !== 'none';
+    panel.style.display = isVisible ? 'none' : 'block';
+    
+    if (!isVisible) {
+        populateRequestPanel();
+    }
+}
+
+// Populate Request Panel
+function populateRequestPanel() {
+    const processSelect = document.getElementById('requestProcess');
+    processSelect.innerHTML = state.processes.map((process, index) => 
+        `<option value="${index}">${process}</option>`
+    ).join('');
+    
+    const resourcesContainer = document.getElementById('requestResources');
+    resourcesContainer.innerHTML = state.resources.map((resource, index) => `
+        <div class="request-form-row">
+            <label>${resource} Request:</label>
+            <input type="number" id="request_${index}" value="0" min="0" max="10">
+        </div>
+    `).join('');
+}
+
+// Simulate Resource Request
+function simulateRequest() {
+    const processIndex = parseInt(document.getElementById('requestProcess').value);
+    const request = state.resources.map((_, index) => 
+        parseInt(document.getElementById(`request_${index}`).value) || 0
+    );
+    
+    // Banker's Request Algorithm
+    const n = state.processes.length;
+    const m = state.resources.length;
+    
+    // Step 1: Check if Request <= Need
+    const need = state.max.map((maxRow, i) => 
+        maxRow.map((maxVal, j) => Math.max(0, maxVal - state.allocation[i][j]))
+    );
+    
+    let validRequest = true;
+    for (let j = 0; j < m; j++) {
+        if (request[j] > need[processIndex][j]) {
+            validRequest = false;
+            break;
+        }
+    }
+    
+    if (!validRequest) {
+        showRequestResult(false, 'Request exceeds process need. Process cannot request more than its maximum need.');
+        return;
+    }
+    
+    // Step 2: Check if Request <= Available
+    let canAllocate = true;
+    for (let j = 0; j < m; j++) {
+        if (request[j] > state.available[j]) {
+            canAllocate = false;
+            break;
+        }
+    }
+    
+    if (!canAllocate) {
+        showRequestResult(false, 'Request exceeds available resources. Process must wait.');
+        return;
+    }
+    
+    // Step 3: Pretend to allocate and check safety
+    const tempAvailable = [...state.available];
+    const tempAllocation = state.allocation.map(row => [...row]);
+    const tempNeed = need.map(row => [...row]);
+    
+    for (let j = 0; j < m; j++) {
+        tempAvailable[j] -= request[j];
+        tempAllocation[processIndex][j] += request[j];
+        tempNeed[processIndex][j] -= request[j];
+    }
+    
+    // Check if system remains safe
+    const isSafe = checkSafety(tempAllocation, state.max, tempAvailable, n, m);
+    
+    if (isSafe) {
+        showRequestResult(true, 'Request can be safely granted. System will remain in safe state.', true);
+    } else {
+        showRequestResult(false, 'Request would lead to unsafe state. Process must wait to avoid deadlock.');
+    }
+}
+
+// Check Safety (helper function)
+function checkSafety(allocation, max, available, n, m) {
+    const need = max.map((maxRow, i) => 
+        maxRow.map((maxVal, j) => Math.max(0, maxVal - allocation[i][j]))
+    );
+    
+    const work = [...available];
+    const finish = new Array(n).fill(false);
+    let count = 0;
+    
+    while (count < n) {
+        let found = false;
+        for (let i = 0; i < n; i++) {
+            if (!finish[i]) {
+                let canRun = true;
+                for (let j = 0; j < m; j++) {
+                    if (need[i][j] > work[j]) {
+                        canRun = false;
+                        break;
+                    }
+                }
+                
+                if (canRun) {
+                    for (let j = 0; j < m; j++) {
+                        work[j] += allocation[i][j];
+                    }
+                    finish[i] = true;
+                    found = true;
+                    count++;
+                }
+            }
+        }
+        
+        if (!found) return false;
+    }
+    
+    return true;
+}
+
+// Show Request Result
+function showRequestResult(safe, message, canApply = false) {
+    const resultDiv = document.getElementById('requestResult');
+    const applyBtn = document.getElementById('applyRequestBtn');
+    
+    resultDiv.style.display = 'block';
+    resultDiv.className = `request-result ${safe ? 'safe' : 'unsafe'}`;
+    resultDiv.innerHTML = `
+        <h4 style="margin-bottom: 8px; font-weight: 700;">
+            ${safe ? '✅ Safe Request' : '⚠️ Unsafe Request'}
+        </h4>
+        <p style="margin: 0; color: var(--text-secondary);">${message}</p>
+    `;
+    
+    applyBtn.style.display = canApply ? 'inline-flex' : 'none';
+    
+    // Store current request for application
+    if (canApply) {
+        state.pendingRequest = {
+            processIndex: parseInt(document.getElementById('requestProcess').value),
+            request: state.resources.map((_, index) => 
+                parseInt(document.getElementById(`request_${index}`).value) || 0
+            )
+        };
+    }
+}
+
+// Apply Request
+function applyRequest() {
+    if (!state.pendingRequest) return;
+    
+    const { processIndex, request } = state.pendingRequest;
+    
+    // Apply the request
+    for (let j = 0; j < state.resources.length; j++) {
+        state.available[j] -= request[j];
+        state.allocation[processIndex][j] += request[j];
+    }
+    
+    // Update UI
+    renderAvailable();
+    renderAllocation();
+    renderNeed();
+    
+    // Hide panel and show success
+    toggleRequestPanel();
+    showToast('Request applied successfully', 'success');
+    
+    // Run simulation to show new state
+    runSimulation();
+    
+    delete state.pendingRequest;
+}
+
+// Analyze Deadlock Recovery
+function analyzeDeadlockRecovery() {
+    showLoading(true);
+    
+    setTimeout(() => {
+        const recoveryPanel = document.getElementById('recoveryPanel');
+        const recoveryOptions = document.getElementById('recoveryOptions');
+        
+        recoveryPanel.style.display = 'block';
+        
+        const solutions = generateRecoverySolutions();
+        
+        recoveryOptions.innerHTML = solutions.map((solution, index) => `
+            <div class="recovery-option">
+                <h4>${index + 1}. ${solution.title}</h4>
+                <p>${solution.description}</p>
+                <ul class="recovery-steps">
+                    ${solution.steps.map(step => `<li>${step}</li>`).join('')}
+                </ul>
+                <button class="btn btn-sm btn-primary" onclick="applyRecovery(${index})" style="margin-top: 12px;">
+                    Apply This Solution
+                </button>
+            </div>
+        `).join('');
+        
+        showLoading(false);
+        showToast('Recovery analysis complete', 'info');
+    }, 500);
+}
+
+// Generate Recovery Solutions
+function generateRecoverySolutions() {
+    const solutions = [];
+    const n = state.processes.length;
+    const m = state.resources.length;
+    
+    // Solution 1: Process Termination (least resources allocated)
+    const allocationSums = state.allocation.map((row, i) => ({
+        process: i,
+        total: row.reduce((a, b) => a + b, 0)
+    }));
+    
+    allocationSums.sort((a, b) => a.total - b.total);
+    
+    solutions.push({
+        title: 'Terminate Process with Least Resources',
+        description: `Terminate ${state.processes[allocationSums[0].process]} which holds the fewest resources (${allocationSums[0].total} total). This minimizes resource loss.`,
+        steps: [
+            `Terminate ${state.processes[allocationSums[0].process]}`,
+            `Release all allocated resources back to available pool`,
+            `Updated Available: [${state.available.map((a, i) => a + state.allocation[allocationSums[0].process][i]).join(', ')}]`,
+            'Re-run safety check'
+        ],
+        processIndex: allocationSums[0].process
+    });
+    
+    // Solution 2: Resource Preemption from high-allocation process
+    const maxAllocation = allocationSums[allocationSums.length - 1];
+    solutions.push({
+        title: 'Preempt Resources from High-Usage Process',
+        description: `Preempt half of resources from ${state.processes[maxAllocation.process]} which holds the most resources.`,
+        steps: [
+            `Preempt 50% of resources from ${state.processes[maxAllocation.process]}`,
+            `Add preempted resources to available pool`,
+            'Process will need to restart and re-request resources',
+            'Re-run safety check'
+        ],
+        processIndex: maxAllocation.process,
+        preempt: true
+    });
+    
+    // Solution 3: Terminate multiple processes if needed
+    if (n > 2) {
+        solutions.push({
+            title: 'Terminate Multiple Processes',
+            description: `Terminate ${state.processes[allocationSums[0].process]} and ${state.processes[allocationSums[1].process]} to free more resources.`,
+            steps: [
+                `Terminate ${state.processes[allocationSums[0].process]} and ${state.processes[allocationSums[1].process]}`,
+                `Release all allocated resources from both processes`,
+                `Updated Available: [${state.available.map((a, i) => a + state.allocation[allocationSums[0].process][i] + state.allocation[allocationSums[1].process][i]).join(', ')}]`,
+                'Re-run safety check'
+            ],
+            processIndex: [allocationSums[0].process, allocationSums[1].process],
+            multiple: true
+        });
+    }
+    
+    return solutions;
+}
+
+// Apply Recovery Solution
+function applyRecovery(solutionIndex) {
+    const solutions = generateRecoverySolutions();
+    const solution = solutions[solutionIndex];
+    
+    if (solution.multiple) {
+        // Terminate multiple processes
+        solution.processIndex.forEach(procIndex => {
+            for (let j = 0; j < state.resources.length; j++) {
+                state.available[j] += state.allocation[procIndex][j];
+                state.allocation[procIndex][j] = 0;
+                state.max[procIndex][j] = 0;
+            }
+        });
+        
+        // Remove processes
+        const processesToRemove = solution.processIndex.sort((a, b) => b - a);
+        processesToRemove.forEach(index => {
+            state.processes.splice(index, 1);
+            state.allocation.splice(index, 1);
+            state.max.splice(index, 1);
+        });
+        
+        // Rename processes
+        state.processes = state.processes.map((_, i) => `P${i}`);
+    } else if (solution.preempt) {
+        // Resource preemption
+        const procIndex = solution.processIndex;
+        for (let j = 0; j < state.resources.length; j++) {
+            const preemptAmount = Math.ceil(state.allocation[procIndex][j] / 2);
+            state.available[j] += preemptAmount;
+            state.allocation[procIndex][j] -= preemptAmount;
+        }
+    } else {
+        // Single process termination
+        const procIndex = solution.processIndex;
+        for (let j = 0; j < state.resources.length; j++) {
+            state.available[j] += state.allocation[procIndex][j];
+        }
+        
+        state.processes.splice(procIndex, 1);
+        state.allocation.splice(procIndex, 1);
+        state.max.splice(procIndex, 1);
+        
+        // Rename processes
+        state.processes = state.processes.map((_, i) => `P${i}`);
+    }
+    
+    // Update UI
+    renderAvailable();
+    renderAllocation();
+    renderMax();
+    renderNeed();
+    
+    // Hide recovery panel
+    document.getElementById('recoveryPanel').style.display = 'none';
+    
+    // Run simulation to check new state
+    runSimulation();
+    
+    showToast('Recovery solution applied', 'success');
 }
