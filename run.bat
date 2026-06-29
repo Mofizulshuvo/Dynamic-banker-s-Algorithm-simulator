@@ -1,53 +1,61 @@
 @echo off
+setlocal
+pushd "%~dp0"
+
 echo ========================================
 echo Dynamic Banker's Algorithm Simulator
 echo ========================================
 echo.
 
-REM Compile C++ backend with HTTP server
-echo [1/2] Compiling C++ backend with HTTP server...
-g++ -std=c++17 -DWIN32_LEAN_AND_MEAN -DNOMINMAX -D_CRT_SECURE_NO_WARNINGS backend/main.cpp backend/server.cpp backend/simulation.cpp backend/banker.cpp backend/fault.cpp backend/recovery.cpp -o backend/server.exe -lws2_32 -static
+where g++ >nul 2>nul
 if %errorlevel% neq 0 (
-    echo ERROR: Compilation failed!
+    echo ERROR: g++ was not found in PATH.
+    echo Install MinGW-w64/MSYS2 or add your compiler bin folder to PATH.
     echo.
-    echo Troubleshooting:
-    echo 1. Ensure you have g++ with C++17 support
-    echo 2. This requires Windows 10 or later (cpp-httplib requirement)
-    echo 3. Try using MSVC (Visual Studio) instead
+    pause
+    exit /b 1
+)
+
+echo [1/3] Checking for an old server process...
+tasklist /FI "IMAGENAME eq server.exe" 2>nul | find /I "server.exe" >nul
+if %errorlevel% equ 0 (
+    echo An old server.exe is running. Stopping it so the rebuild is not locked...
+    taskkill /F /IM server.exe >nul 2>nul
+    timeout /t 1 /nobreak >nul
+)
+
+echo [2/3] Compiling C++ backend...
+g++ -std=c++17 -DWIN32_LEAN_AND_MEAN -DNOMINMAX backend/main.cpp backend/simulation.cpp backend/banker.cpp backend/fault.cpp backend/recovery.cpp -o backend/server.exe -lws2_32 -static
+if %errorlevel% neq 0 (
+    echo.
+    echo ERROR: Compilation failed. The compiler message above is the real cause.
+    echo.
+    echo Common fixes:
+    echo - Close any old server window and run this file again.
+    echo - Make sure you are running from the project root folder.
+    echo - Make sure MinGW-w64 g++ is installed and available in PATH.
+    echo.
     pause
     exit /b 1
 )
 echo Backend compiled successfully.
 echo.
 
-REM Start HTTP server
-echo [2/2] Starting HTTP server on port 8080...
-echo Server will serve both API and frontend...
-echo.
-start backend\server.exe
+echo [3/3] Starting HTTP server on port 8080...
+echo A separate server window will stay open with live logs.
+start "Banker Simulator Server" cmd /k ""%CD%\backend\server.exe""
 
-REM Wait for server to start
 timeout /t 2 /nobreak >nul
 
-REM Open browser to the web interface
 echo Opening web interface at http://localhost:8080...
-start http://localhost:8080
+start "" "http://localhost:8080"
 
 echo.
 echo ========================================
-echo System ready!
-echo - HTTP server running on port 8080
-echo - Web interface opened in browser
-echo - Press Ctrl+C in server window to stop
+echo System ready
 echo ========================================
-echo.
-echo Instructions:
-echo 1. Edit matrices in the web interface
-echo 2. Click "Initialize" to set up the system
-echo 3. Click "Run" to start simulation
-echo 4. Use "Inject Fault" to test fault injection
-echo 5. Use "Recovery" to apply recovery strategies
-echo.
-echo The server will continue running until you close its window.
+echo URL: http://localhost:8080
+echo Keep the server window open while using the simulator.
+echo Close that server window when you are done.
 echo.
 pause

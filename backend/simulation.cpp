@@ -186,6 +186,8 @@ bool Simulation::runOneStep()
     for (int i = 0; i < state.resourceCount; i++)
     {
         state.available[i] += state.allocation[processID][i];
+        state.allocation[processID][i] = 0;
+        state.need[processID][i] = 0;
     }
 
     state.processes[processID].status = FINISHED;

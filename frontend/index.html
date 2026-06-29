@@ -4,299 +4,194 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dynamic Banker's Algorithm Simulator</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <!-- Toast Container -->
-    <div class="toast-container" id="toastContainer"></div>
-
-    <!-- Loading Overlay -->
-    <div class="loading-overlay" id="loadingOverlay">
+    <div class="toast-container" id="toastContainer" aria-live="polite"></div>
+    <div class="loading-overlay" id="loadingOverlay" aria-hidden="true">
         <div class="loading-spinner"></div>
     </div>
 
-    <!-- Header -->
-    <header>
-        <div class="container">
-            <div class="header-content">
-                <div class="logo">
-                    <div class="logo-icon">BA</div>
+    <header class="app-header">
+        <div class="container header-content">
+            <div class="brand">
+                <div class="brand-mark">BA</div>
+                <div>
                     <h1>Dynamic Banker's Algorithm Simulator</h1>
+                    <p>Deadlock avoidance, fault injection, and recovery in one workspace.</p>
                 </div>
-                <div class="header-controls">
-                    <div class="theme-toggle active-light" id="themeToggle">
-                        <span class="light-mode"> Light</span>
-                        <span class="dark-mode"> Dark</span>
-                    </div>
-                    <button class="btn btn-outline" onclick="initializeSystem()">
-                         Initialize
-                    </button>
-                </div>
+            </div>
+            <div class="header-actions">
+                <button class="btn btn-ghost" id="themeToggle" type="button">Dark</button>
+                <button class="btn btn-primary" type="button" onclick="initializeSystem()">Initialize</button>
             </div>
         </div>
     </header>
 
-    <!-- Main Content -->
-    <main class="container">
-        <!-- Control Bar -->
-        <div class="card" style="margin-bottom: 24px;">
-            <div class="card-header">
-                <div class="card-title">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="12" cy="12" r="3"></circle>
-                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-                    </svg>
-                    Simulation Controls
-                </div>
-                <div class="card-actions">
-                    <button class="btn btn-primary" id="runBtn" onclick="runSimulation()" disabled>
-                         ▶ Run
-                    </button>
-                    <button class="btn btn-warning" id="pauseBtn" onclick="pauseSimulation()" disabled>
-                         ⏸ Pause
-                    </button>
-                    <button class="btn btn-success" id="resumeBtn" onclick="resumeSimulation()" disabled>
-                         ▶ Resume
-                    </button>
-                    <button class="btn btn-info" id="stepBtn" onclick="stepSimulation()" disabled>
-                         ⏭ Next Step
-                    </button>
-                    <button class="btn btn-danger" onclick="resetSystem()">
-                         ↺ Reset
-                    </button>
-                </div>
+    <main class="container app-shell">
+        <section class="summary-band" aria-label="System summary">
+            <div class="summary-item">
+                <span>Server</span>
+                <strong id="serverBadge">Checking</strong>
             </div>
-            <div class="fault-controls">
-                <div class="speed-control">
-                    <label style="font-size: 0.85rem; color: var(--text-secondary);">Speed:</label>
-                    <input type="range" min="100" max="5000" value="1000" id="speedSlider" onchange="updateSpeed(this.value)">
-                    <span class="speed-value" id="speedValue">1000ms</span>
-                </div>
-                <button class="btn btn-danger" id="faultBtn" onclick="showFaultPanel()" disabled>
-                     ⚡ Inject Fault
-                </button>
-                <button class="btn btn-success" id="recoverBtn" onclick="showRecoveryPanel()" disabled>
-                     � Recovery
-                </button>
+            <div class="summary-item">
+                <span>State</span>
+                <strong id="stateBadge">Idle</strong>
             </div>
-        </div>
+            <div class="summary-item">
+                <span>Processes</span>
+                <strong id="processCountLabel">5</strong>
+            </div>
+            <div class="summary-item">
+                <span>Resources</span>
+                <strong id="resourceCountLabel">3</strong>
+            </div>
+            <div class="summary-item">
+                <span>Step</span>
+                <strong id="stepLabel">0 / 0</strong>
+            </div>
+        </section>
 
-        <!-- Grid Layout -->
-        <div class="grid grid-2">
-            <!-- Available Resources -->
-            <div class="card">
-                <div class="card-header">
-                    <div class="card-title">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M20 7h-9"></path>
-                            <path d="M14 17H5"></path>
-                            <circle cx="17" cy="17" r="3"></circle>
-                            <circle cx="7" cy="7" r="3"></circle>
-                        </svg>
-                        Available Resources
-                    </div>
+        <section class="toolbar-panel">
+            <div class="toolbar-title">
+                <h2>Simulation Controls</h2>
+                <p id="statusMessage">Edit the configuration, initialize the system, then run or step through the sequence.</p>
+            </div>
+            <div class="control-grid">
+                <button class="btn btn-success" id="runBtn" type="button" onclick="runSimulation()" disabled>Run</button>
+                <button class="btn btn-warning" id="pauseBtn" type="button" onclick="pauseSimulation()" disabled>Pause</button>
+                <button class="btn btn-success" id="resumeBtn" type="button" onclick="resumeSimulation()" disabled>Resume</button>
+                <button class="btn btn-info" id="stepBtn" type="button" onclick="stepSimulation()" disabled>Next Step</button>
+                <button class="btn btn-outline" type="button" onclick="resetSystem()">Reset</button>
+                <button class="btn btn-danger" id="faultBtn" type="button" onclick="togglePanel('faultPanel')" disabled>Inject Fault</button>
+                <button class="btn btn-outline" id="recoverBtn" type="button" onclick="togglePanel('recoveryPanel')" disabled>Recovery</button>
+            </div>
+            <div class="speed-row">
+                <label for="speedSlider">Step speed</label>
+                <input type="range" min="250" max="5000" step="250" value="1000" id="speedSlider" oninput="updateSpeed(this.value)">
+                <span id="speedValue">1000 ms</span>
+            </div>
+        </section>
+
+        <section class="workspace-grid">
+            <div class="panel">
+                <div class="panel-header">
+                    <h2>Available Resources</h2>
+                    <span class="muted">Available / Total</span>
                 </div>
-                <div class="resource-bars" id="resourceBars">
-                    <!-- Dynamic content -->
-                </div>
+                <div class="resource-bars" id="resourceBars"></div>
             </div>
 
-            <!-- System Status -->
-            <div class="card">
-                <div class="card-header">
-                    <div class="card-title">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
-                        </svg>
-                        System Status
-                    </div>
+            <div class="panel">
+                <div class="panel-header">
+                    <h2>Safe Sequence</h2>
+                    <span class="muted" id="sequenceHint">Initialize to calculate</span>
                 </div>
-                <div id="systemStatus">
-                    <div class="status-badge status-warning" style="margin-bottom: 16px;">
-                        ⏳ Not initialized
-                    </div>
-                    <div class="help-section">
-                        <h3> Quick Guide</h3>
-                        <p>1. Edit the matrices below</p>
-                        <p>2. Click "Initialize" to set up the system</p>
-                        <p>3. Click "Run" to start simulation</p>
-                        <p>4. Inject faults during runtime to test recovery</p>
-                    </div>
+                <div class="safe-sequence" id="safeSequence">
+                    <p class="empty-state">No safe sequence yet.</p>
                 </div>
             </div>
-        </div>
+        </section>
 
-        <!-- Process Cards -->
-        <div class="card" style="margin-bottom: 24px;">
-            <div class="card-header">
-                <div class="card-title">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
-                        <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
-                    </svg>
-                    Process Status
+        <section class="panel">
+            <div class="panel-header split">
+                <div>
+                    <h2>Configuration</h2>
+                    <p class="muted">Allocation must never exceed the maximum claim for any process.</p>
+                </div>
+                <div class="compact-actions">
+                    <button class="btn btn-sm btn-outline" type="button" onclick="addProcess()">Add Process</button>
+                    <button class="btn btn-sm btn-outline" type="button" onclick="removeLastProcess()">Remove Process</button>
+                    <button class="btn btn-sm btn-outline" type="button" onclick="addResource()">Add Resource</button>
+                    <button class="btn btn-sm btn-outline" type="button" onclick="removeLastResource()">Remove Resource</button>
                 </div>
             </div>
-            <div class="process-cards" id="processCards">
-                <!-- Dynamic content -->
-            </div>
-        </div>
 
-        <!-- Matrices -->
-        <div class="card" style="margin-bottom: 24px;">
-            <div class="card-header">
-                <div class="card-title">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                        <line x1="3" y1="9" x2="21" y2="9"></line>
-                        <line x1="9" y1="21" x2="9" y2="9"></line>
-                    </svg>
-                    Edit Configuration
-                </div>
-                <div class="card-actions">
-                    <button class="btn btn-sm btn-outline" onclick="addProcess()">+ Add Process</button>
-                    <button class="btn btn-sm btn-outline" onclick="removeLastProcess()">- Remove Process</button>
-                    <button class="btn btn-sm btn-outline" onclick="addResource()">+ Add Resource</button>
-                    <button class="btn btn-sm btn-outline" onclick="removeLastResource()">- Remove Resource</button>
-                </div>
-            </div>
-            <div class="grid grid-3">
-                <!-- Allocation Matrix -->
-                <div class="card">
-                    <div class="card-header">
-                        <div class="card-title">
-                            Allocation Matrix
-                        </div>
-                    </div>
+            <div class="matrix-layout">
+                <div class="matrix-block">
+                    <h3>Resource Pool</h3>
                     <div class="matrix-container">
-                        <table class="matrix-table" id="allocationTable">
-                            <!-- Dynamic content -->
-                        </table>
+                        <table class="matrix-table" id="resourceTable"></table>
                     </div>
                 </div>
-
-                <!-- Max Matrix -->
-                <div class="card">
-                    <div class="card-header">
-                        <div class="card-title">
-                            Max Matrix
-                        </div>
-                    </div>
+                <div class="matrix-block">
+                    <h3>Allocation Matrix</h3>
                     <div class="matrix-container">
-                        <table class="matrix-table" id="maxTable">
-                            <!-- Dynamic content -->
-                        </table>
+                        <table class="matrix-table" id="allocationTable"></table>
                     </div>
                 </div>
-
-                <!-- Need Matrix -->
-                <div class="card">
-                    <div class="card-header">
-                        <div class="card-title">
-                            Need Matrix (Auto)
-                        </div>
-                    </div>
+                <div class="matrix-block">
+                    <h3>Maximum Matrix</h3>
                     <div class="matrix-container">
-                        <table class="matrix-table" id="needTable">
-                            <!-- Dynamic content -->
-                        </table>
+                        <table class="matrix-table" id="maxTable"></table>
+                    </div>
+                </div>
+                <div class="matrix-block">
+                    <h3>Need Matrix</h3>
+                    <div class="matrix-container">
+                        <table class="matrix-table readonly" id="needTable"></table>
                     </div>
                 </div>
             </div>
-        </div>
+        </section>
 
-        <!-- Safe Sequence -->
-        <div class="card" id="safeSequenceCard" style="margin-bottom: 24px; display: none;">
-            <div class="card-header">
-                <div class="card-title">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
-                    </svg>
-                    Safe Sequence
-                </div>
+        <section class="panel">
+            <div class="panel-header">
+                <h2>Process Status</h2>
+                <span class="muted">Current allocation and remaining need</span>
             </div>
-            <div class="safe-sequence" id="safeSequence">
-                <!-- Dynamic content -->
-            </div>
-        </div>
+            <div class="process-cards" id="processCards"></div>
+        </section>
 
-        <!-- Timeline -->
-        <div class="card" style="margin-bottom: 24px;">
-            <div class="card-header">
-                <div class="card-title">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="12" cy="12" r="10"></circle>
-                        <polyline points="12 6 12 12 16 14"></polyline>
-                    </svg>
-                    Execution Timeline
+        <section class="panel action-panel" id="faultPanel" hidden>
+            <div class="panel-header split">
+                <div>
+                    <h2>Inject Fault</h2>
+                    <p class="muted">Faults can be injected while the simulation is running.</p>
                 </div>
-                <button class="btn btn-outline" onclick="clearTimeline()">
-                    🗑️ Clear
-                </button>
+                <button class="btn btn-sm btn-outline" type="button" onclick="togglePanel('faultPanel', false)">Close</button>
             </div>
-            <div class="timeline-panel" id="timelinePanel">
-                <p style="color: var(--text-secondary); text-align: center; padding: 20px;">No events yet</p>
-            </div>
-        </div>
-
-        <!-- Fault Injection Panel -->
-        <div class="card" id="faultPanel" style="display: none; margin-bottom: 24px;">
-            <div class="card-header">
-                <div class="card-title">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="24" height="24">
-                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
-                        <line x1="12" y1="9" x2="12" y2="13"></line>
-                        <line x1="12" y1="17" x2="12.01" y2="17"></line>
-                    </svg>
-                    Inject Fault
-                </div>
-                <button class="btn btn-outline" onclick="hideFaultPanel()">
-                    ✕ Close
-                </button>
-            </div>
-            <div class="fault-form">
-                <div class="form-row">
-                    <label>Fault Type:</label>
+            <div class="form-grid">
+                <label>Fault type
                     <select id="faultType">
                         <option value="RESOURCE_LOSS">Resource Loss</option>
                         <option value="MEMORY_FRAGMENTATION">Memory Fragmentation</option>
                         <option value="HARDWARE_FAILURE">Hardware Failure</option>
                     </select>
-                </div>
-                <div class="form-row">
-                    <label>Resource ID:</label>
-                    <select id="faultResourceID">
-                        <!-- Dynamic content -->
-                    </select>
-                </div>
-                <div class="form-row">
-                    <label>Units Lost:</label>
-                    <input type="number" id="faultUnitsLost" value="1" min="1" max="10">
-                </div>
-                <button class="btn btn-danger" onclick="injectFault()">
-                    ⚡ Inject Fault
-                </button>
+                </label>
+                <label>Resource
+                    <select id="faultResourceID"></select>
+                </label>
+                <label>Units lost
+                    <input type="number" id="faultUnitsLost" value="1" min="1">
+                </label>
+                <button class="btn btn-danger" type="button" onclick="injectFault()">Apply Fault</button>
             </div>
-        </div>
+        </section>
 
-        <!-- Recovery Panel -->
-        <div class="card" id="recoveryPanel" style="display: none; margin-bottom: 24px;">
-            <div class="card-header">
-                <div class="card-title">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="24" height="24">
-                        <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path>
-                    </svg>
-                    Recovery Options
+        <section class="panel action-panel" id="recoveryPanel" hidden>
+            <div class="panel-header split">
+                <div>
+                    <h2>Recovery</h2>
+                    <p class="muted">Restore resources, suspend work, resume it, terminate a process, or reallocate manually.</p>
                 </div>
-                <button class="btn btn-outline" onclick="hideRecoveryPanel()">
-                    ✕ Close
-                </button>
+                <button class="btn btn-sm btn-outline" type="button" onclick="togglePanel('recoveryPanel', false)">Close</button>
             </div>
-            <div class="recovery-options" id="recoveryOptions">
-                <!-- Dynamic content -->
+            <div class="recovery-options" id="recoveryOptions"></div>
+        </section>
+
+        <section class="panel">
+            <div class="panel-header split">
+                <div>
+                    <h2>Execution Timeline</h2>
+                    <p class="muted">Newest events appear first.</p>
+                </div>
+                <button class="btn btn-sm btn-outline" type="button" onclick="clearTimeline()">Clear</button>
             </div>
-        </div>
+            <div class="timeline-panel" id="timelinePanel">
+                <p class="empty-state">No events yet.</p>
+            </div>
+        </section>
     </main>
 
     <script src="script.js"></script>

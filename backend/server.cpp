@@ -515,6 +515,12 @@ void startServer(int port)
         return;
     });
     
+    // Simple health check endpoint
+    svr.Get("/api/health", [](const httplib::Request&, httplib::Response& res) {
+        setCORSHeaders(res);
+        res.set_content(R"({"status": "ok", "message": "Server is running"})", "application/json");
+    });
+    
     // API endpoints
     svr.Get("/api/status", getStatus);
     svr.Post("/api/initialize", initializeSimulation);
@@ -527,8 +533,11 @@ void startServer(int port)
     svr.Post("/api/reset", resetSimulation);
     svr.Post("/api/speed", setSpeed);
     
-    // Serve static files
-    svr.set_mount_point("/", "../frontend");
+    // Serve static files from frontend directory
+    svr.set_mount_point("/", "./frontend");
+    svr.set_file_extension_and_mimetype_mapping(".html", "text/html");
+    svr.set_file_extension_and_mimetype_mapping(".css", "text/css");
+    svr.set_file_extension_and_mimetype_mapping(".js", "application/javascript");
     
     cout << "========================================" << endl;
     cout << "Dynamic Banker's Algorithm Simulator" << endl;
@@ -536,6 +545,7 @@ void startServer(int port)
     cout << "Server starting on port " << port << "..." << endl;
     cout << "Frontend available at: http://localhost:" << port << endl;
     cout << "API endpoints:" << endl;
+    cout << "  GET  /api/health" << endl;
     cout << "  GET  /api/status" << endl;
     cout << "  POST /api/initialize" << endl;
     cout << "  POST /api/run" << endl;
@@ -548,5 +558,9 @@ void startServer(int port)
     cout << "  POST /api/speed" << endl;
     cout << "========================================" << endl;
     
-    svr.listen("0.0.0.0", port);
+    if (!svr.listen("0.0.0.0", port))
+    {
+        cerr << "Failed to start server on port " << port << endl;
+        cerr << "The port may be in use. Try a different port." << endl;
+    }
 }

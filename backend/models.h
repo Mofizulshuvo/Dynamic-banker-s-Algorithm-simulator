@@ -52,44 +52,44 @@ enum FaultType
 // Process
 struct Process
 {
-    int id;
-    ProcessStatus status;
-    int progress; // 0-100 percentage
+    int id = -1;
+    ProcessStatus status = WAITING;
+    int progress = 0; // 0-100 percentage
 };
 
 // Fault Event
 struct FaultEvent
 {
-    int id;
-    FaultType type;
-    int resourceID;
-    int unitsLost;
+    int id = -1;
+    FaultType type = RESOURCE_LOSS;
+    int resourceID = -1;
+    int unitsLost = 0;
     string description;
-    long long timestamp;
+    long long timestamp = 0;
 };
 
 // Recovery Action
 struct RecoveryAction
 {
-    int id;
-    RecoveryType type;
-    int processID;
-    int resourceID;
-    int units;
-    bool success;
+    int id = -1;
+    RecoveryType type = RESTORE_RESOURCE;
+    int processID = -1;
+    int resourceID = -1;
+    int units = 0;
+    bool success = false;
     string message;
-    long long timestamp;
+    long long timestamp = 0;
 };
 
 // Timeline Event
 struct TimelineEvent
 {
-    int id;
+    int id = -1;
     string event;
-    int processID;
+    int processID = -1;
     vector<int> available;
-    bool safe;
-    long long timestamp;
+    bool safe = false;
+    long long timestamp = 0;
 };
 
 // Execution Step
