@@ -1,204 +1,270 @@
-# Dynamic Banker's Algorithm Simulator
+# Dynamic Banker's Algorithm Simulator with Resource Fragmentation and Fault Modeling
 
-A comprehensive, interactive simulator for the Banker's Algorithm with runtime fault injection and recovery mechanisms. This project demonstrates OS resource management, deadlock avoidance, and system recovery strategies.
+A portfolio-quality Operating Systems project that demonstrates deadlock avoidance with Banker's Algorithm, runtime resource faults, and recovery strategies through an interactive web dashboard.
+
+## Project Overview
+
+This simulator models how an operating system manages resources while processes execute. It calculates the Need matrix, evaluates safe sequences, runs processes step by step, injects runtime failures, and applies recovery mechanisms when the system becomes unsafe.
+
+The backend is written in C++17 and exposes a REST API with `cpp-httplib` and `nlohmann/json`. The frontend is a vanilla HTML, CSS, and JavaScript application served by the backend.
+
+## Problem Statement
+
+Traditional Banker's Algorithm examples usually stop at checking whether a static allocation state is safe. Real systems are dynamic: processes execute, resources are released, hardware can fail, memory can fragment, and the OS must recover without entering deadlock.
+
+This project extends the classic algorithm into a dynamic simulation where faults can occur during execution and recovery decisions are visualized in real time.
+
+## Objectives
+
+- Demonstrate Safe State and Unsafe State clearly.
+- Visualize Allocation, Maximum, Need, Available, and Total resources.
+- Animate process execution and resource release.
+- Inject faults only during runtime.
+- Recalculate Banker's Algorithm after faults and recovery.
+- Provide recovery methods for unsafe states.
+- Make deadlock examples easy to test and explain.
+- Provide a professional dashboard suitable for a university presentation or portfolio.
 
 ## Features
 
-- **Interactive Web Interface**: Modern, responsive UI with dark mode support
-- **Runtime Simulation**: Step-by-step execution with timeline visualization
-- **Fault Injection**: Inject various fault types during simulation (resource loss, memory fragmentation, hardware failure)
-- **Recovery Strategies**: Multiple recovery options (restore resource, suspend/resume/terminate process, manual reallocation)
-- **REST API Backend**: C++17 backend with HTTP server using cpp-httplib
-- **Real-time Updates**: Live status updates for processes, resources, and system state
-- **Process Cards**: Visual representation of process states and progress
-- **Resource Bars**: Animated resource utilization indicators
-- **Timeline Logging**: Complete event history with timestamps
+- Editable process/resource configuration.
+- Automatic Need matrix calculation.
+- Safe sequence calculation.
+- Run, Pause, Resume, Next Step, Reset, and Speed controls.
+- Runtime fault injection:
+  - Resource Loss
+  - Memory Fragmentation
+  - Hardware Failure
+- Recovery strategies:
+  - Restore Lost Resource
+  - Suspend Process
+  - Resume Process
+  - Terminate Process
+  - Manual Resource Reallocation
+- Live resource bars.
+- Process cards with status, allocation, need, and progress.
+- Runtime timeline for every major event.
+- Configuration validation with user-friendly messages.
+- Safe sample and deadlock preset.
+- Dark mode.
+- Responsive modern dashboard UI.
+
+## Technology Stack
+
+Backend:
+
+- C++17
+- Object-Oriented Programming
+- `cpp-httplib`
+- `nlohmann/json`
+- Windows sockets library through MinGW-w64
+
+Frontend:
+
+- HTML5
+- CSS3
+- Vanilla JavaScript
+
+No React, Vue, Angular, Bootstrap, Electron, Qt, Java, PHP, Python, or Node backend is used.
 
 ## Architecture
 
-### Backend (C++17)
-- **models.h**: Data structures for processes, resources, faults, recovery actions, timeline events
-- **banker.h/cpp**: Banker's Algorithm implementation with resource request validation
-- **fault.h/cpp**: Fault injection engine with multiple fault types
-- **recovery.h/cpp**: Recovery strategies with history tracking
-- **simulation.h/cpp**: Simulation orchestration with state management
-- ** server.h/cpp**: HTTP server with REST API endpoints
-- **main.cpp**: Server entry point
-
-### Frontend (HTML5, CSS3, Vanilla JavaScript)
-- **index.html**: Single-page application structure
-- **style.css**: Modern styling with glassmorphism and animations
-- **script.js**: API integration and UI logic
-
-## Dependencies
-
-### Backend
-- **OS**: Windows 10 or later (required by cpp-httplib)
-- **Compiler**: C++17 compiler (g++ or MSVC)
-- cpp-httplib (single-header library included in `backend/external/`)
-- nlohmann/json (single-header library included in `backend/external/`)
-- Windows sockets library (ws2_32) for networking
-
-### Frontend
-- Modern web browser (Chrome, Firefox, Edge, Safari)
-- No external dependencies required
-
-## Installation
-
-1. Clone or download the repository
-2. Ensure g++ is installed and in your PATH
-3. No additional installation required for external libraries (included)
-
-## Usage
-
-### Quick Start
-
-1. Run `run.bat` on Windows
-2. The script will:
-   - Compile the C++ backend
-   - Start the HTTP server on port 8080
-   - Open the web interface in your browser
-3. Use the web interface to:
-   - Edit the allocation and max matrices
-   - Click "Initialize" to set up the system
-   - Click "Run" to start the simulation
-   - Use "Inject Fault" to test fault scenarios
-   - Use "Recovery" to apply recovery strategies
-
-### Manual Compilation
-
-```bash
-g++ -std=c++17 backend/main.cpp backend/server.cpp backend/simulation.cpp backend/banker.cpp backend/fault.cpp backend/recovery.cpp -o backend/server.exe -lws2_32
+```text
+Frontend UI
+    |
+    | REST API
+    v
+cpp-httplib C++ Server
+    |
+    +-- Simulation
+    |     Coordinates runtime state, steps, faults, recovery, and timeline
+    |
+    +-- Banker
+    |     Calculates Need matrix and safe sequence
+    |
+    +-- FaultEngine
+    |     Applies resource loss, fragmentation, and hardware failure
+    |
+    +-- RecoveryEngine
+          Restores resources, suspends/resumes/terminates processes,
+          and manually reallocates resources
 ```
 
-### Running the Server
+## Folder Structure
 
-```bash
-backend\server.exe
+```text
+Dynamic-banker's Algorithm-simulator/
+|-- backend/
+|   |-- main.cpp
+|   |-- server.cpp
+|   |-- server.h
+|   |-- simulation.cpp
+|   |-- simulation.h
+|   |-- banker.cpp
+|   |-- banker.h
+|   |-- fault.cpp
+|   |-- fault.h
+|   |-- recovery.cpp
+|   |-- recovery.h
+|   |-- models.h
+|   |-- external/
+|       |-- httplib.h
+|       |-- json.hpp
+|-- frontend/
+|   |-- index.html
+|   |-- style.css
+|   |-- script.js
+|-- run.bat
+|-- README.md
 ```
 
-The server will start on `http://localhost:8080` and serve both the API and the frontend.
+## Algorithms
+
+### Need Matrix
+
+```text
+Need[i][j] = Maximum[i][j] - Allocation[i][j]
+```
+
+### Safety Algorithm
+
+1. Copy Available into Work.
+2. Mark all processes as unfinished.
+3. Find a process whose Need is less than or equal to Work.
+4. Pretend that process finishes and releases its allocation.
+5. Repeat until no more processes can finish.
+6. If every active process can finish, the system is safe.
+7. Otherwise, the system is unsafe.
+
+### Fault Handling
+
+Faults reduce available resources during execution. After every fault:
+
+1. The timeline records the event.
+2. Need is recalculated.
+3. Safe sequence is recalculated.
+4. If no safe sequence exists, the system enters `UNSAFE`.
+5. Recovery actions become necessary.
+
+### Recovery Handling
+
+Every recovery strategy immediately reruns the safety algorithm. If the system becomes safe again, execution can continue.
 
 ## API Endpoints
 
-### System Status
-- `GET /api/status` - Get current system state
+All responses are JSON.
 
-### Simulation Control
-- `POST /api/initialize` - Initialize the simulation with given matrices
-- `POST /api/run` - Start the simulation
-- `POST /api/step` - Execute one simulation step
-- `POST /api/pause` - Pause the simulation
-- `POST /api/resume` - Resume the simulation
-- `POST /api/reset` - Reset the simulation
-
-### Fault Injection
-- `POST /api/fault` - Inject a fault
-  - Body: `{ type, resourceID, unitsLost }`
-  - Types: `RESOURCE_LOSS`, `MEMORY_FRAGMENTATION`, `HARDWARE_FAILURE`
-
-### Recovery
-- `POST /api/recover` - Apply a recovery strategy
-  - Body: `{ type, processID, resourceID, units, fromProcess, toProcess }`
-  - Types: `RESTORE_RESOURCE`, `SUSPEND_PROCESS`, `RESUME_PROCESS`, `TERMINATE_PROCESS`, `MANUAL_REALLOCATION`
-
-### Speed Control
-- `POST /api/speed` - Set simulation speed
-  - Body: `{ speed }` (in milliseconds)
-
-## Banker's Algorithm
-
-The simulator implements the classic Banker's Algorithm for deadlock avoidance:
-
-1. **Need Matrix**: Calculated as `Need = Max - Allocation`
-2. **Safety Check**: Determines if a safe sequence exists
-3. **Resource Request**: Validates requests before granting
-4. **Safe Sequence**: Order in which processes can complete
-
-## Fault Types
-
-- **Resource Loss**: Sudden reduction in available resources
-- **Memory Fragmentation**: Resources become unusable due to fragmentation
-- **Hardware Failure**: Complete failure of a resource type
-
-## Recovery Strategies
-
-- **Restore Resource**: Add resources back to the available pool
-- **Suspend Process**: Temporarily pause a process to free its resources
-- **Resume Process**: Reactivate a suspended process
-- **Terminate Process**: Permanently stop a process and release all resources
-- **Manual Reallocation**: Manually redistribute resources between processes
-
-## Simulation States
-
-- `IDLE`: Not initialized
-- `INITIALIZED`: Ready to run
-- `SAFE`: System is in safe state
-- `UNSAFE`: System is in unsafe state (deadlock risk)
-- `RUNNING`: Simulation is executing
-- `PAUSED`: Simulation is paused
-- `FAULT`: Fault has been detected
-- `RECOVERY`: Recovery is in progress
-- `COMPLETED`: Simulation has finished
-
-## Project Structure
-
-```
-Dynamic-banker's Algorithm-simulator/
-├── backend/
-│   ├── external/
-│   │   ├── httplib.h          # cpp-httplib library
-│   │   └── json.hpp           # nlohmann/json library
-│   ├── models.h               # Data structures
-│   ├── banker.h/cpp           # Banker's Algorithm
-│   ├── fault.h/cpp            # Fault injection
-│   ├── recovery.h/cpp         # Recovery strategies
-│   ├── simulation.h/cpp       # Simulation orchestration
-│   ├── server.h/cpp           # HTTP server
-│   └── main.cpp               # Entry point
-├── frontend/
-│   ├── index.html             # Web interface
-│   ├── style.css              # Styling
-│   └── script.js              # Frontend logic
-├── run.bat                    # Build and run script
-└── README.md                  # This file
+```text
+GET  /api/health
+GET  /api/status
+POST /api/initialize
+POST /api/run
+POST /api/step
+POST /api/pause
+POST /api/resume
+POST /api/fault
+POST /api/recover
+POST /api/reset
+POST /api/speed
 ```
 
-## Default Configuration
+Short aliases without `/api` are also available for the main endpoints.
 
-The simulator starts with a classic example:
-- 5 Processes (P0-P4)
-- 3 Resources (A, B, C)
-- Total Resources: [10, 5, 7]
-- Available: [3, 3, 2]
+## How to Build and Run
 
-## Troubleshooting
+Open PowerShell in the project root:
 
-### Compilation Errors
-- Ensure g++ supports C++17 (`g++ --version`)
-- Verify Windows sockets library is available
-- Check that all source files exist
+```powershell
+cd "C:\Users\Mofiz\OneDrive\Desktop\SHUVO\OS project\Dynamic-banker's Algorithm-simulator"
+.\run.bat
+```
 
-### Server Won't Start
-- Check if port 8080 is already in use
-- Verify firewall allows the application
-- Check server console for error messages
+The script will:
 
-### Frontend Not Connecting
-- Ensure the server is running
-- Check browser console for API errors
-- Verify CORS is enabled (default)
+1. Stop an old `server.exe` if it is locking the build.
+2. Compile the backend.
+3. Start the HTTP server.
+4. Open the frontend.
+
+Then visit:
+
+```text
+http://localhost:8080
+```
+
+## Manual Build
+
+```powershell
+g++ -std=c++17 -D_WIN32_WINNT=0x0A00 -DWIN32_LEAN_AND_MEAN -DNOMINMAX backend/main.cpp backend/server.cpp backend/simulation.cpp backend/banker.cpp backend/fault.cpp backend/recovery.cpp -o backend/server.exe -lws2_32 -static
+.\backend\server.exe
+```
+
+Open:
+
+```text
+http://localhost:8080
+```
+
+Keep the server window open while using the simulator.
+
+## Demo Scenarios
+
+### Safe Sample
+
+Click `Load Sample`, then:
+
+1. `Initialize`
+2. `Run`
+
+Expected safe sequence:
+
+```text
+P1 -> P3 -> P4 -> P0 -> P2
+```
+
+### Deadlock / Unsafe Sample
+
+Click `Load Deadlock`, then:
+
+1. `Initialize`
+2. `Run`
+
+Expected result:
+
+```text
+System State: UNSAFE
+Safe Sequence: None
+```
+
+This example represents:
+
+```text
+P0 holds A and waits for B
+P1 holds B and waits for A
+```
+
+## Screenshots
+
+Add screenshots here after running the application:
+
+```text
+assets/screenshots/dashboard.png
+assets/screenshots/deadlock-result.png
+assets/screenshots/fault-recovery.png
+```
+
+## Future Improvements
+
+- Export timeline as a report.
+- Add multiple built-in OS case studies.
+- Add chart-based resource history.
+- Add automated presentation mode.
+- Add persistence for saved configurations.
+
+## Contributors
+
+- Mofiz
 
 ## License
 
-This project is for educational purposes.
-
-## Contributing
-
-This is an educational project. Feel free to fork and modify for learning purposes.
-
-## Acknowledgments
-
-- Banker's Algorithm by Edsger Dijkstra
-- cpp-httplib library by yhirose
-- nlohmann/json library by nlohmann
+This project is for educational use.

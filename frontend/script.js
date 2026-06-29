@@ -1,4 +1,4 @@
-const API_BASE = "http://localhost:8080/api";
+const API_BASE = "/api";
 
 const defaultState = {
     processes: ["P0", "P1", "P2", "P3", "P4"],
@@ -132,6 +132,35 @@ function loadSampleConfiguration() {
     renderAll();
     enableControls(false);
     showToast("Classic sample configuration loaded.", "success");
+}
+
+function loadDeadlockConfiguration() {
+    stopAutoRun();
+    state = {
+        processes: ["P0", "P1"],
+        resources: ["A", "B"],
+        allocation: [
+            [1, 0],
+            [0, 1]
+        ],
+        max: [
+            [1, 1],
+            [1, 1]
+        ],
+        need: [],
+        available: [0, 0],
+        totalResources: [1, 1],
+        serverProcesses: [],
+        safeSequence: [],
+        timeline: [],
+        simulationState: "IDLE",
+        currentStep: 0,
+        initialized: false,
+        simulationSpeed: state.simulationSpeed || 1000
+    };
+    renderAll();
+    enableControls(false);
+    showToast("Deadlock preset loaded. Initialize, then Run.", "warning");
 }
 
 async function runSimulation() {
@@ -285,8 +314,12 @@ async function injectFault() {
     showLoading(false);
 
     if (result.success) {
+        stopAutoRun();
         updateUIFromState(result.state);
         togglePanel("faultPanel", false);
+        if (result.state?.simulationState === "UNSAFE") {
+            togglePanel("recoveryPanel", true);
+        }
         showToast(result.fault?.description || "Fault injected.", "warning");
     } else {
         if (result.state) updateUIFromState(result.state);
@@ -365,6 +398,9 @@ async function applyRecovery(type) {
     if (result.success) {
         updateUIFromState(result.state);
         togglePanel("recoveryPanel", false);
+        if (result.state?.simulationState === "RUNNING") {
+            startAutoRun();
+        }
         showToast(result.recovery?.message || "Recovery applied.", "success");
     } else {
         if (result.state) updateUIFromState(result.state);
@@ -391,6 +427,7 @@ function updateUIFromState(serverState) {
 
 function renderAll() {
     renderSummary();
+    renderIncidentBanner();
     renderResourceBars();
     renderValidation();
     renderResourceTable();
@@ -404,7 +441,9 @@ function renderAll() {
 }
 
 function renderSummary() {
-    document.getElementById("stateBadge").textContent = formatState(state.simulationState);
+    const stateBadge = document.getElementById("stateBadge");
+    stateBadge.textContent = formatState(state.simulationState);
+    stateBadge.style.color = getStateColor(state.simulationState);
     document.getElementById("processCountLabel").textContent = String(state.processes.length);
     document.getElementById("resourceCountLabel").textContent = String(state.resources.length);
     document.getElementById("stepLabel").textContent = `${state.currentStep} / ${state.safeSequence.length}`;
@@ -444,6 +483,38 @@ function renderSafetyScore() {
     score.textContent = label;
     fill.style.width = `${percent}%`;
     fill.className = `bar-fill ${className}`;
+}
+
+function renderIncidentBanner() {
+    const banner = document.getElementById("incidentBanner");
+    const title = document.getElementById("incidentTitle");
+    const message = document.getElementById("incidentMessage");
+    const eyebrow = document.getElementById("incidentEyebrow");
+    const resumeButton = document.getElementById("incidentResumeBtn");
+
+    banner.hidden = true;
+    banner.classList.remove("unsafe");
+    resumeButton.hidden = false;
+
+    if (state.simulationState === "UNSAFE") {
+        banner.hidden = false;
+        banner.classList.add("unsafe");
+        eyebrow.textContent = "Unsafe State";
+        title.textContent = "No safe sequence exists";
+        message.textContent = "The system is at deadlock risk. Apply a recovery strategy before execution can continue.";
+        resumeButton.hidden = true;
+        return;
+    }
+
+    if (state.simulationState === "PAUSED") {
+        const lastFault = [...state.timeline].reverse().find(item => item.event?.toLowerCase().includes("fault"));
+        if (!lastFault) return;
+
+        banner.hidden = false;
+        eyebrow.textContent = "Fault Review";
+        title.textContent = "Runtime fault paused the simulation";
+        message.textContent = "Resources changed during execution. Review the recalculated state, recover if needed, or resume.";
+    }
 }
 
 function renderResourceBars() {
@@ -875,10 +946,18 @@ function getStatusMessage() {
         INITIALIZED: "System is initialized. Run the simulation or step through the safe sequence.",
         RUNNING: "Simulation is running. You can pause, inject faults, or watch the automatic steps.",
         PAUSED: "Simulation is paused. Resume or execute the next step manually.",
-        UNSAFE: "The current state is unsafe. Apply a recovery action before continuing.",
+        UNSAFE: "Unsafe state detected. No safe sequence exists; this is the deadlock-risk result to explain.",
         COMPLETED: "All runnable processes completed successfully."
     };
     return messages[state.simulationState] || "System state updated.";
+}
+
+function getStateColor(value) {
+    if (value === "UNSAFE") return "var(--danger)";
+    if (value === "RUNNING") return "var(--info)";
+    if (value === "COMPLETED" || value === "INITIALIZED") return "var(--success)";
+    if (value === "PAUSED") return "var(--warning)";
+    return "var(--primary)";
 }
 
 function formatTime(timestamp) {

@@ -1,17 +1,18 @@
 #include "server.h"
-#include "simulation.h"
+
 #include "external/httplib.h"
 #include "external/json.hpp"
+#include "simulation.h"
+
 #include <iostream>
 #include <memory>
+#include <mutex>
 
 using json = nlohmann::json;
 using namespace std;
 
-// Global simulation instance
-unique_ptr<Simulation> g_simulation;
-
-// Helper function to convert ProcessStatus to string
+namespace
+{
 string processStatusToString(ProcessStatus status)
 {
     switch (status)
@@ -25,7 +26,6 @@ string processStatusToString(ProcessStatus status)
     }
 }
 
-// Helper function to convert SimulationState to string
 string simulationStateToString(SimulationState state)
 {
     switch (state)
@@ -43,7 +43,6 @@ string simulationStateToString(SimulationState state)
     }
 }
 
-// Helper function to convert FaultType to string
 string faultTypeToString(FaultType type)
 {
     switch (type)
@@ -55,7 +54,6 @@ string faultTypeToString(FaultType type)
     }
 }
 
-// Helper function to convert RecoveryType to string
 string recoveryTypeToString(RecoveryType type)
 {
     switch (type)
@@ -69,11 +67,9 @@ string recoveryTypeToString(RecoveryType type)
     }
 }
 
-// Convert SystemState to JSON
 json systemStateToJson(const SystemState& state)
 {
     json j;
-    
     j["processCount"] = state.processCount;
     j["resourceCount"] = state.resourceCount;
     j["allocation"] = state.allocation;
@@ -86,481 +82,424 @@ json systemStateToJson(const SystemState& state)
     j["currentStep"] = state.currentStep;
     j["simulationFinished"] = state.simulationFinished;
     j["simulationSpeed"] = state.simulationSpeed;
-    
-    // Convert processes
-    json processesJson = json::array();
+
+    j["processes"] = json::array();
     for (const auto& process : state.processes)
     {
-        json p;
-        p["id"] = process.id;
-        p["status"] = processStatusToString(process.status);
-        p["progress"] = process.progress;
-        processesJson.push_back(p);
+        j["processes"].push_back({
+            {"id", process.id},
+            {"status", processStatusToString(process.status)},
+            {"progress", process.progress}
+        });
     }
-    j["processes"] = processesJson;
-    
-    // Convert fault history
-    json faultHistoryJson = json::array();
+
+    j["faultHistory"] = json::array();
     for (const auto& fault : state.faultHistory)
     {
-        json f;
-        f["id"] = fault.id;
-        f["type"] = faultTypeToString(fault.type);
-        f["resourceID"] = fault.resourceID;
-        f["unitsLost"] = fault.unitsLost;
-        f["description"] = fault.description;
-        f["timestamp"] = fault.timestamp;
-        faultHistoryJson.push_back(f);
-    }
-    j["faultHistory"] = faultHistoryJson;
-    
-    // Convert recovery history
-    json recoveryHistoryJson = json::array();
-    for (const auto& recovery : state.recoveryHistory)
-    {
-        json r;
-        r["id"] = recovery.id;
-        r["type"] = recoveryTypeToString(recovery.type);
-        r["processID"] = recovery.processID;
-        r["resourceID"] = recovery.resourceID;
-        r["units"] = recovery.units;
-        r["success"] = recovery.success;
-        r["message"] = recovery.message;
-        r["timestamp"] = recovery.timestamp;
-        recoveryHistoryJson.push_back(r);
-    }
-    j["recoveryHistory"] = recoveryHistoryJson;
-    
-    // Convert timeline
-    json timelineJson = json::array();
-    for (const auto& event : state.timeline)
-    {
-        json t;
-        t["id"] = event.id;
-        t["event"] = event.event;
-        t["processID"] = event.processID;
-        t["available"] = event.available;
-        t["safe"] = event.safe;
-        t["timestamp"] = event.timestamp;
-        timelineJson.push_back(t);
-    }
-    j["timeline"] = timelineJson;
-    
-    return j;
-}
-
-// Helper function to set CORS headers
-void setCORSHeaders(httplib::Response& res)
-{
-    res.set_header("Access-Control-Allow-Origin", "*");
-    res.set_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    res.set_header("Access-Control-Allow-Headers", "Content-Type");
-}
-
-// GET /status - Get current system status
-void getStatus(const httplib::Request& req, httplib::Response& res)
-{
-    setCORSHeaders(res);
-    
-    if (!g_simulation)
-    {
-        res.set_content(R"({"error": "Simulation not initialized"})", "application/json");
-        res.status = 400;
-        return;
-    }
-    
-    json response;
-    response["success"] = true;
-    response["state"] = systemStateToJson(g_simulation->getState());
-    response["isSafe"] = g_simulation->isSafe();
-    response["safeSequence"] = g_simulation->getSafeSequence();
-    
-    res.set_content(response.dump(), "application/json");
-}
-
-// POST /initialize - Initialize the simulation
-void initializeSimulation(const httplib::Request& req, httplib::Response& res)
-{
-    setCORSHeaders(res);
-    
-    try
-    {
-        json body = json::parse(req.body);
-        
-        int processCount = body["processCount"];
-        int resourceCount = body["resourceCount"];
-        vector<vector<int>> allocation = body["allocation"];
-        vector<vector<int>> maximum = body["maximum"];
-        vector<int> available = body["available"];
-        
-        g_simulation = make_unique<Simulation>();
-        
-        bool success;
-        if (body.contains("totalResources"))
-        {
-            vector<int> totalResources = body["totalResources"];
-            success = g_simulation->initializeWithTotal(processCount, resourceCount, allocation, maximum, available, totalResources);
-        }
-        else
-        {
-            success = g_simulation->initialize(processCount, resourceCount, allocation, maximum, available);
-        }
-        
-        if (!success)
-        {
-            res.set_content(R"({"success": false, "error": "Invalid initialization parameters"})", "application/json");
-            res.status = 400;
-            return;
-        }
-        
-        json response;
-        response["success"] = true;
-        response["message"] = "Simulation initialized successfully";
-        response["state"] = systemStateToJson(g_simulation->getState());
-        
-        res.set_content(response.dump(), "application/json");
-    }
-    catch (const exception& e)
-    {
-        res.set_content(R"({"success": false, "error": "Invalid JSON format"})", "application/json");
-        res.status = 400;
-    }
-}
-
-// POST /run - Start the simulation
-void runSimulation(const httplib::Request& req, httplib::Response& res)
-{
-    setCORSHeaders(res);
-    
-    if (!g_simulation)
-    {
-        res.set_content(R"({"success": false, "error": "Simulation not initialized"})", "application/json");
-        res.status = 400;
-        return;
-    }
-    
-    bool success = g_simulation->run();
-    
-    json response;
-    response["success"] = success;
-    
-    if (success)
-    {
-        response["message"] = "Simulation started successfully";
-    }
-    else
-    {
-        response["message"] = "System is in unsafe state, cannot start simulation";
-    }
-    
-    response["state"] = systemStateToJson(g_simulation->getState());
-    
-    res.set_content(response.dump(), "application/json");
-}
-
-// POST /step - Execute one step of simulation
-void stepSimulation(const httplib::Request& req, httplib::Response& res)
-{
-    setCORSHeaders(res);
-    
-    if (!g_simulation)
-    {
-        res.set_content(R"({"success": false, "error": "Simulation not initialized"})", "application/json");
-        res.status = 400;
-        return;
-    }
-    
-    bool success = g_simulation->runOneStep();
-    
-    json response;
-    response["success"] = success;
-    response["message"] = success ? "Step executed successfully" : "Simulation finished or not running";
-    response["state"] = systemStateToJson(g_simulation->getState());
-    
-    res.set_content(response.dump(), "application/json");
-}
-
-// POST /pause - Pause the simulation
-void pauseSimulation(const httplib::Request& req, httplib::Response& res)
-{
-    setCORSHeaders(res);
-    
-    if (!g_simulation)
-    {
-        res.set_content(R"({"success": false, "error": "Simulation not initialized"})", "application/json");
-        res.status = 400;
-        return;
-    }
-    
-    g_simulation->pause();
-    
-    json response;
-    response["success"] = true;
-    response["message"] = "Simulation paused";
-    response["state"] = systemStateToJson(g_simulation->getState());
-    
-    res.set_content(response.dump(), "application/json");
-}
-
-// POST /resume - Resume the simulation
-void resumeSimulation(const httplib::Request& req, httplib::Response& res)
-{
-    setCORSHeaders(res);
-    
-    if (!g_simulation)
-    {
-        res.set_content(R"({"success": false, "error": "Simulation not initialized"})", "application/json");
-        res.status = 400;
-        return;
-    }
-    
-    g_simulation->resume();
-    
-    json response;
-    response["success"] = true;
-    response["message"] = "Simulation resumed";
-    response["state"] = systemStateToJson(g_simulation->getState());
-    
-    res.set_content(response.dump(), "application/json");
-}
-
-// POST /fault - Inject a fault
-void injectFault(const httplib::Request& req, httplib::Response& res)
-{
-    setCORSHeaders(res);
-    
-    if (!g_simulation)
-    {
-        res.set_content(R"({"success": false, "error": "Simulation not initialized"})", "application/json");
-        res.status = 400;
-        return;
-    }
-    
-    try
-    {
-        json body = json::parse(req.body);
-        
-        string typeStr = body["type"];
-        int resourceID = body["resourceID"];
-        int unitsLost = body["unitsLost"];
-        
-        FaultType type;
-        if (typeStr == "RESOURCE_LOSS")
-            type = RESOURCE_LOSS;
-        else if (typeStr == "MEMORY_FRAGMENTATION")
-            type = MEMORY_FRAGMENTATION;
-        else if (typeStr == "HARDWARE_FAILURE")
-            type = HARDWARE_FAILURE;
-        else
-        {
-            res.set_content(R"({"success": false, "error": "Invalid fault type"})", "application/json");
-            res.status = 400;
-            return;
-        }
-        
-        FaultEvent fault = g_simulation->injectFault(type, resourceID, unitsLost);
-        
-        json response;
-        response["success"] = true;
-        response["message"] = "Fault injected successfully";
-        response["fault"] = {
+        j["faultHistory"].push_back({
             {"id", fault.id},
             {"type", faultTypeToString(fault.type)},
             {"resourceID", fault.resourceID},
             {"unitsLost", fault.unitsLost},
             {"description", fault.description},
             {"timestamp", fault.timestamp}
-        };
-        response["state"] = systemStateToJson(g_simulation->getState());
-        
-        res.set_content(response.dump(), "application/json");
+        });
     }
-    catch (const exception& e)
+
+    j["recoveryHistory"] = json::array();
+    for (const auto& recovery : state.recoveryHistory)
     {
-        res.set_content(R"({"success": false, "error": "Invalid JSON format"})", "application/json");
-        res.status = 400;
+        j["recoveryHistory"].push_back({
+            {"id", recovery.id},
+            {"type", recoveryTypeToString(recovery.type)},
+            {"processID", recovery.processID},
+            {"resourceID", recovery.resourceID},
+            {"units", recovery.units},
+            {"success", recovery.success},
+            {"message", recovery.message},
+            {"timestamp", recovery.timestamp}
+        });
     }
+
+    j["timeline"] = json::array();
+    for (const auto& event : state.timeline)
+    {
+        j["timeline"].push_back({
+            {"id", event.id},
+            {"event", event.event},
+            {"processID", event.processID},
+            {"available", event.available},
+            {"safe", event.safe},
+            {"timestamp", event.timestamp}
+        });
+    }
+
+    return j;
 }
 
-// POST /recover - Apply recovery
-void applyRecovery(const httplib::Request& req, httplib::Response& res)
+void setCors(httplib::Response& res)
 {
-    setCORSHeaders(res);
-    
-    if (!g_simulation)
-    {
-        res.set_content(R"({"success": false, "error": "Simulation not initialized"})", "application/json");
-        res.status = 400;
-        return;
-    }
-    
-    try
-    {
-        json body = json::parse(req.body);
-        
-        string typeStr = body["type"];
-        int processID = body.value("processID", -1);
-        int resourceID = body.value("resourceID", -1);
-        int units = body.value("units", 0);
-        int fromProcess = body.value("fromProcess", -1);
-        int toProcess = body.value("toProcess", -1);
-        
-        RecoveryType type;
-        if (typeStr == "RESTORE_RESOURCE")
-            type = RESTORE_RESOURCE;
-        else if (typeStr == "SUSPEND_PROCESS")
-            type = SUSPEND_PROCESS;
-        else if (typeStr == "RESUME_PROCESS")
-            type = RESUME_PROCESS;
-        else if (typeStr == "TERMINATE_PROCESS")
-            type = TERMINATE_PROCESS;
-        else if (typeStr == "MANUAL_REALLOCATION")
-            type = MANUAL_REALLOCATION;
-        else
-        {
-            res.set_content(R"({"success": false, "error": "Invalid recovery type"})", "application/json");
-            res.status = 400;
-            return;
-        }
-        
-        RecoveryAction action = g_simulation->recover(type, processID, resourceID, units, fromProcess, toProcess);
-        
-        json response;
-        response["success"] = action.success;
-        response["message"] = action.message;
-        response["recovery"] = {
-            {"id", action.id},
-            {"type", recoveryTypeToString(action.type)},
-            {"processID", action.processID},
-            {"resourceID", action.resourceID},
-            {"units", action.units},
-            {"success", action.success},
-            {"message", action.message},
-            {"timestamp", action.timestamp}
-        };
-        response["state"] = systemStateToJson(g_simulation->getState());
-        
-        res.set_content(response.dump(), "application/json");
-    }
-    catch (const exception& e)
-    {
-        res.set_content(R"({"success": false, "error": "Invalid JSON format"})", "application/json");
-        res.status = 400;
-    }
+    res.set_header("Access-Control-Allow-Origin", "*");
+    res.set_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.set_header("Access-Control-Allow-Headers", "Content-Type");
 }
 
-// POST /reset - Reset the simulation
-void resetSimulation(const httplib::Request& req, httplib::Response& res)
+void sendJson(httplib::Response& res, const json& body, int status = 200)
 {
-    setCORSHeaders(res);
-    
-    if (!g_simulation)
-    {
-        res.set_content(R"({"success": false, "error": "Simulation not initialized"})", "application/json");
-        res.status = 400;
-        return;
-    }
-    
-    g_simulation->reset();
-    
-    json response;
-    response["success"] = true;
-    response["message"] = "Simulation reset successfully";
-    response["state"] = systemStateToJson(g_simulation->getState());
-    
-    res.set_content(response.dump(), "application/json");
+    setCors(res);
+    res.status = status;
+    res.set_content(body.dump(), "application/json; charset=utf-8");
 }
 
-// POST /speed - Set simulation speed
-void setSpeed(const httplib::Request& req, httplib::Response& res)
+bool parseFaultType(const string& value, FaultType& type)
 {
-    setCORSHeaders(res);
-    
-    if (!g_simulation)
-    {
-        res.set_content(R"({"success": false, "error": "Simulation not initialized"})", "application/json");
-        res.status = 400;
-        return;
-    }
-    
-    try
-    {
-        json body = json::parse(req.body);
-        int speed = body["speed"];
-        
-        g_simulation->setSimulationSpeed(speed);
-        
-        json response;
-        response["success"] = true;
-        response["message"] = "Simulation speed updated";
-        response["speed"] = g_simulation->getSimulationSpeed();
-        
-        res.set_content(response.dump(), "application/json");
-    }
-    catch (const exception& e)
-    {
-        res.set_content(R"({"success": false, "error": "Invalid JSON format"})", "application/json");
-        res.status = 400;
-    }
+    if (value == "RESOURCE_LOSS")
+        type = RESOURCE_LOSS;
+    else if (value == "MEMORY_FRAGMENTATION")
+        type = MEMORY_FRAGMENTATION;
+    else if (value == "HARDWARE_FAILURE")
+        type = HARDWARE_FAILURE;
+    else
+        return false;
+
+    return true;
 }
 
-// Start the HTTP server
+bool parseRecoveryType(const string& value, RecoveryType& type)
+{
+    if (value == "RESTORE_RESOURCE")
+        type = RESTORE_RESOURCE;
+    else if (value == "SUSPEND_PROCESS")
+        type = SUSPEND_PROCESS;
+    else if (value == "RESUME_PROCESS")
+        type = RESUME_PROCESS;
+    else if (value == "TERMINATE_PROCESS")
+        type = TERMINATE_PROCESS;
+    else if (value == "MANUAL_REALLOCATION")
+        type = MANUAL_REALLOCATION;
+    else
+        return false;
+
+    return true;
+}
+}
+
 void startServer(int port)
 {
-    httplib::Server svr;
-    
-    // Handle OPTIONS requests for CORS
-    svr.Options(".*", [](const httplib::Request&, httplib::Response& res) {
-        setCORSHeaders(res);
-        return;
+    httplib::Server server;
+    mutex simulationMutex;
+    unique_ptr<Simulation> simulation;
+
+    server.Options(".*", [](const httplib::Request&, httplib::Response& res) {
+        setCors(res);
     });
-    
-    // Simple health check endpoint
-    svr.Get("/api/health", [](const httplib::Request&, httplib::Response& res) {
-        setCORSHeaders(res);
-        res.set_content(R"({"status": "ok", "message": "Server is running"})", "application/json");
-    });
-    
-    // API endpoints
-    svr.Get("/api/status", getStatus);
-    svr.Post("/api/initialize", initializeSimulation);
-    svr.Post("/api/run", runSimulation);
-    svr.Post("/api/step", stepSimulation);
-    svr.Post("/api/pause", pauseSimulation);
-    svr.Post("/api/resume", resumeSimulation);
-    svr.Post("/api/fault", injectFault);
-    svr.Post("/api/recover", applyRecovery);
-    svr.Post("/api/reset", resetSimulation);
-    svr.Post("/api/speed", setSpeed);
-    
-    // Serve static files from frontend directory
-    svr.set_mount_point("/", "./frontend");
-    svr.set_file_extension_and_mimetype_mapping(".html", "text/html");
-    svr.set_file_extension_and_mimetype_mapping(".css", "text/css");
-    svr.set_file_extension_and_mimetype_mapping(".js", "application/javascript");
-    
+
+    auto healthHandler = [](const httplib::Request&, httplib::Response& res) {
+        sendJson(res, {{"status", "ok"}, {"message", "Server is running"}});
+    };
+
+    auto statusHandler = [&](const httplib::Request&, httplib::Response& res) {
+        lock_guard<mutex> lock(simulationMutex);
+        if (!simulation)
+        {
+            sendJson(res, {{"success", false}, {"error", "Simulation not initialized"}}, 400);
+            return;
+        }
+
+        sendJson(res, {
+            {"success", true},
+            {"state", systemStateToJson(simulation->getState())},
+            {"isSafe", simulation->isSafe()},
+            {"safeSequence", simulation->getSafeSequence()}
+        });
+    };
+
+    auto initializeHandler = [&](const httplib::Request& req, httplib::Response& res) {
+        lock_guard<mutex> lock(simulationMutex);
+        try
+        {
+            json body = json::parse(req.body);
+            int processCount = body.at("processCount");
+            int resourceCount = body.at("resourceCount");
+            vector<vector<int>> allocation = body.at("allocation");
+            vector<vector<int>> maximum = body.at("maximum");
+            vector<int> available = body.at("available");
+
+            auto nextSimulation = make_unique<Simulation>();
+            bool success = false;
+            if (body.contains("totalResources"))
+            {
+                vector<int> totalResources = body.at("totalResources");
+                success = nextSimulation->initializeWithTotal(
+                    processCount,
+                    resourceCount,
+                    allocation,
+                    maximum,
+                    available,
+                    totalResources
+                );
+            }
+            else
+            {
+                success = nextSimulation->initialize(processCount, resourceCount, allocation, maximum, available);
+            }
+
+            if (!success)
+            {
+                sendJson(res, {{"success", false}, {"error", "Invalid initialization parameters"}}, 400);
+                return;
+            }
+
+            simulation = move(nextSimulation);
+            sendJson(res, {
+                {"success", true},
+                {"message", "Simulation initialized successfully"},
+                {"state", systemStateToJson(simulation->getState())}
+            });
+        }
+        catch (const exception& e)
+        {
+            sendJson(res, {{"success", false}, {"error", string("Invalid request: ") + e.what()}}, 400);
+        }
+    };
+
+    auto runHandler = [&](const httplib::Request&, httplib::Response& res) {
+        lock_guard<mutex> lock(simulationMutex);
+        if (!simulation)
+        {
+            sendJson(res, {{"success", false}, {"error", "Simulation not initialized"}}, 400);
+            return;
+        }
+
+        bool success = simulation->run();
+        sendJson(res, {
+            {"success", success},
+            {"message", success ? "Simulation started successfully" : "System is unsafe; no safe sequence exists"},
+            {"state", systemStateToJson(simulation->getState())}
+        });
+    };
+
+    auto stepHandler = [&](const httplib::Request&, httplib::Response& res) {
+        lock_guard<mutex> lock(simulationMutex);
+        if (!simulation)
+        {
+            sendJson(res, {{"success", false}, {"error", "Simulation not initialized"}}, 400);
+            return;
+        }
+
+        bool success = simulation->runOneStep();
+        sendJson(res, {
+            {"success", success},
+            {"message", success ? "Step executed successfully" : "Simulation finished or not running"},
+            {"state", systemStateToJson(simulation->getState())}
+        });
+    };
+
+    auto pauseHandler = [&](const httplib::Request&, httplib::Response& res) {
+        lock_guard<mutex> lock(simulationMutex);
+        if (!simulation)
+        {
+            sendJson(res, {{"success", false}, {"error", "Simulation not initialized"}}, 400);
+            return;
+        }
+
+        simulation->pause();
+        sendJson(res, {
+            {"success", true},
+            {"message", "Simulation paused"},
+            {"state", systemStateToJson(simulation->getState())}
+        });
+    };
+
+    auto resumeHandler = [&](const httplib::Request&, httplib::Response& res) {
+        lock_guard<mutex> lock(simulationMutex);
+        if (!simulation)
+        {
+            sendJson(res, {{"success", false}, {"error", "Simulation not initialized"}}, 400);
+            return;
+        }
+
+        simulation->resume();
+        sendJson(res, {
+            {"success", true},
+            {"message", "Simulation resumed"},
+            {"state", systemStateToJson(simulation->getState())}
+        });
+    };
+
+    auto faultHandler = [&](const httplib::Request& req, httplib::Response& res) {
+        lock_guard<mutex> lock(simulationMutex);
+        if (!simulation)
+        {
+            sendJson(res, {{"success", false}, {"error", "Simulation not initialized"}}, 400);
+            return;
+        }
+
+        try
+        {
+            json body = json::parse(req.body);
+            FaultType type;
+            if (!parseFaultType(body.at("type"), type))
+            {
+                sendJson(res, {{"success", false}, {"error", "Invalid fault type"}}, 400);
+                return;
+            }
+
+            FaultEvent fault = simulation->injectFault(
+                type,
+                body.at("resourceID"),
+                body.at("unitsLost")
+            );
+
+            bool success = fault.id >= 0;
+            sendJson(res, {
+                {"success", success},
+                {"message", success ? "Fault injected successfully" : fault.description},
+                {"fault", {
+                    {"id", fault.id},
+                    {"type", faultTypeToString(fault.type)},
+                    {"resourceID", fault.resourceID},
+                    {"unitsLost", fault.unitsLost},
+                    {"description", fault.description},
+                    {"timestamp", fault.timestamp}
+                }},
+                {"state", systemStateToJson(simulation->getState())}
+            });
+        }
+        catch (const exception& e)
+        {
+            sendJson(res, {{"success", false}, {"error", string("Invalid request: ") + e.what()}}, 400);
+        }
+    };
+
+    auto recoverHandler = [&](const httplib::Request& req, httplib::Response& res) {
+        lock_guard<mutex> lock(simulationMutex);
+        if (!simulation)
+        {
+            sendJson(res, {{"success", false}, {"error", "Simulation not initialized"}}, 400);
+            return;
+        }
+
+        try
+        {
+            json body = json::parse(req.body);
+            RecoveryType type;
+            if (!parseRecoveryType(body.at("type"), type))
+            {
+                sendJson(res, {{"success", false}, {"error", "Invalid recovery type"}}, 400);
+                return;
+            }
+
+            RecoveryAction action = simulation->recover(
+                type,
+                body.value("processID", -1),
+                body.value("resourceID", -1),
+                body.value("units", 0),
+                body.value("fromProcess", -1),
+                body.value("toProcess", -1)
+            );
+
+            sendJson(res, {
+                {"success", action.success},
+                {"message", action.message},
+                {"recovery", {
+                    {"id", action.id},
+                    {"type", recoveryTypeToString(action.type)},
+                    {"processID", action.processID},
+                    {"resourceID", action.resourceID},
+                    {"units", action.units},
+                    {"success", action.success},
+                    {"message", action.message},
+                    {"timestamp", action.timestamp}
+                }},
+                {"state", systemStateToJson(simulation->getState())}
+            });
+        }
+        catch (const exception& e)
+        {
+            sendJson(res, {{"success", false}, {"error", string("Invalid request: ") + e.what()}}, 400);
+        }
+    };
+
+    auto resetHandler = [&](const httplib::Request&, httplib::Response& res) {
+        lock_guard<mutex> lock(simulationMutex);
+        if (!simulation)
+        {
+            sendJson(res, {{"success", false}, {"error", "Simulation not initialized"}}, 400);
+            return;
+        }
+
+        simulation->reset();
+        sendJson(res, {
+            {"success", true},
+            {"message", "Simulation reset successfully"},
+            {"state", systemStateToJson(simulation->getState())}
+        });
+    };
+
+    auto speedHandler = [&](const httplib::Request& req, httplib::Response& res) {
+        lock_guard<mutex> lock(simulationMutex);
+        if (!simulation)
+        {
+            sendJson(res, {{"success", false}, {"error", "Simulation not initialized"}}, 400);
+            return;
+        }
+
+        try
+        {
+            json body = json::parse(req.body);
+            simulation->setSimulationSpeed(body.at("speed"));
+            sendJson(res, {
+                {"success", true},
+                {"message", "Simulation speed updated"},
+                {"speed", simulation->getSimulationSpeed()},
+                {"state", systemStateToJson(simulation->getState())}
+            });
+        }
+        catch (const exception& e)
+        {
+            sendJson(res, {{"success", false}, {"error", string("Invalid request: ") + e.what()}}, 400);
+        }
+    };
+
+    server.Get("/api/health", healthHandler);
+    server.Get("/health", healthHandler);
+    server.Get("/api/status", statusHandler);
+    server.Get("/status", statusHandler);
+    server.Post("/api/initialize", initializeHandler);
+    server.Post("/initialize", initializeHandler);
+    server.Post("/api/run", runHandler);
+    server.Post("/run", runHandler);
+    server.Post("/api/step", stepHandler);
+    server.Post("/step", stepHandler);
+    server.Post("/api/pause", pauseHandler);
+    server.Post("/pause", pauseHandler);
+    server.Post("/api/resume", resumeHandler);
+    server.Post("/resume", resumeHandler);
+    server.Post("/api/fault", faultHandler);
+    server.Post("/fault", faultHandler);
+    server.Post("/api/recover", recoverHandler);
+    server.Post("/recover", recoverHandler);
+    server.Post("/api/reset", resetHandler);
+    server.Post("/reset", resetHandler);
+    server.Post("/api/speed", speedHandler);
+    server.Post("/speed", speedHandler);
+
+    server.set_mount_point("/", "./frontend");
+    server.set_file_extension_and_mimetype_mapping(".html", "text/html; charset=utf-8");
+    server.set_file_extension_and_mimetype_mapping(".css", "text/css; charset=utf-8");
+    server.set_file_extension_and_mimetype_mapping(".js", "application/javascript; charset=utf-8");
+
     cout << "========================================" << endl;
     cout << "Dynamic Banker's Algorithm Simulator" << endl;
     cout << "========================================" << endl;
-    cout << "Server starting on port " << port << "..." << endl;
-    cout << "Frontend available at: http://localhost:" << port << endl;
-    cout << "API endpoints:" << endl;
-    cout << "  GET  /api/health" << endl;
-    cout << "  GET  /api/status" << endl;
-    cout << "  POST /api/initialize" << endl;
-    cout << "  POST /api/run" << endl;
-    cout << "  POST /api/step" << endl;
-    cout << "  POST /api/pause" << endl;
-    cout << "  POST /api/resume" << endl;
-    cout << "  POST /api/fault" << endl;
-    cout << "  POST /api/recover" << endl;
-    cout << "  POST /api/reset" << endl;
-    cout << "  POST /api/speed" << endl;
+    cout << "Frontend: http://localhost:" << port << endl;
+    cout << "API:      http://localhost:" << port << "/api/status" << endl;
     cout << "========================================" << endl;
-    
-    if (!svr.listen("0.0.0.0", port))
+
+    if (!server.listen("0.0.0.0", port))
     {
         cerr << "Failed to start server on port " << port << endl;
-        cerr << "The port may be in use. Try a different port." << endl;
+        cerr << "Close any old server.exe process and try again." << endl;
     }
 }

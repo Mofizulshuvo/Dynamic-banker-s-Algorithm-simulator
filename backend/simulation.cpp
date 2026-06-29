@@ -40,6 +40,24 @@ bool Simulation::initialize(int processCount, int resourceCount,
     if (available.size() != resourceCount)
         return false;
 
+    for (int i = 0; i < processCount; i++)
+    {
+        if (allocation[i].size() != resourceCount || maximum[i].size() != resourceCount)
+            return false;
+
+        for (int j = 0; j < resourceCount; j++)
+        {
+            if (allocation[i][j] < 0 || maximum[i][j] < 0 || allocation[i][j] > maximum[i][j])
+                return false;
+        }
+    }
+
+    for (int j = 0; j < resourceCount; j++)
+    {
+        if (available[j] < 0)
+            return false;
+    }
+
     state.processCount = processCount;
     state.resourceCount = resourceCount;
     state.allocation = allocation;
@@ -94,6 +112,21 @@ bool Simulation::initializeWithTotal(int processCount, int resourceCount,
 {
     if (!initialize(processCount, resourceCount, allocation, maximum, available))
         return false;
+
+    if (totalResources.size() != resourceCount)
+        return false;
+
+    for (int j = 0; j < resourceCount; j++)
+    {
+        int allocated = 0;
+        for (int i = 0; i < processCount; i++)
+        {
+            allocated += allocation[i][j];
+        }
+
+        if (totalResources[j] < 0 || allocated + available[j] > totalResources[j])
+            return false;
+    }
 
     state.totalResources = totalResources;
     initialTotalResources = totalResources;
@@ -276,6 +309,9 @@ FaultEvent Simulation::injectFault(FaultType type, int resourceID, int unitsLost
             break;
     }
 
+    if (fault.id < 0)
+        return fault;
+
     addTimelineEvent("Fault injected: " + fault.description);
 
     // Recalculate safety
@@ -284,8 +320,8 @@ FaultEvent Simulation::injectFault(FaultType type, int resourceID, int unitsLost
 
     if (safe)
     {
-        state.simulationState = RUNNING_STATE;
-        addTimelineEvent("System remains safe after fault");
+        state.simulationState = PAUSED;
+        addTimelineEvent("System remains safe after fault; simulation paused for review");
     }
     else
     {
@@ -323,6 +359,9 @@ RecoveryAction Simulation::recover(RecoveryType type, int processID,
     }
 
     addTimelineEvent("Recovery applied: " + action.message);
+
+    if (!action.success)
+        return action;
 
     // Recalculate safety
     banker.calculateNeed(state);
