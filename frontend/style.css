@@ -724,6 +724,51 @@ input[type="range"] {
     gap: 10px;
 }
 
+.app-footer {
+    display: flex;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 16px 4px 0;
+    color: var(--muted);
+    font-size: 0.9rem;
+}
+
+.summary-item[data-tone="state"] strong {
+    color: var(--primary);
+}
+
+.incident-banner {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 18px;
+    padding: 18px;
+    border: 1px solid color-mix(in srgb, var(--warning) 45%, var(--border));
+    border-radius: var(--radius);
+    background: color-mix(in srgb, var(--warning) 12%, var(--surface));
+    box-shadow: var(--shadow);
+}
+
+.incident-banner[hidden] {
+    display: none;
+}
+
+.incident-banner.unsafe {
+    border-color: color-mix(in srgb, var(--danger) 55%, var(--border));
+    background: color-mix(in srgb, var(--danger) 12%, var(--surface));
+}
+
+.incident-banner h2 {
+    margin-top: 4px;
+    font-size: 1.3rem;
+}
+
+.incident-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
 .toast {
     width: min(410px, calc(100vw - 36px));
     padding: 13px 14px;
@@ -815,6 +860,15 @@ input[type="range"] {
 
     .btn {
         width: 100%;
+    }
+
+    .app-footer {
+        flex-direction: column;
+    }
+
+    .incident-banner {
+        align-items: stretch;
+        flex-direction: column;
     }
 
     .hero-copy h2 {

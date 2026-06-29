@@ -1,4 +1,4 @@
-#include "simple_server.cpp"
+#include "server.h"
 #include <iostream>
 
 using namespace std;

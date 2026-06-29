@@ -25,7 +25,7 @@ if %errorlevel% equ 0 (
 )
 
 echo [2/3] Compiling C++ backend...
-g++ -std=c++17 -DWIN32_LEAN_AND_MEAN -DNOMINMAX backend/main.cpp backend/simulation.cpp backend/banker.cpp backend/fault.cpp backend/recovery.cpp -o backend/server.exe -lws2_32 -static
+g++ -std=c++17 -D_WIN32_WINNT=0x0A00 -DWIN32_LEAN_AND_MEAN -DNOMINMAX backend/main.cpp backend/server.cpp backend/simulation.cpp backend/banker.cpp backend/fault.cpp backend/recovery.cpp -o backend/server.exe -lws2_32 -static
 if %errorlevel% neq 0 (
     echo.
     echo ERROR: Compilation failed. The compiler message above is the real cause.

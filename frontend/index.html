@@ -24,6 +24,7 @@
             <div class="header-actions">
                 <button class="btn btn-ghost" id="themeToggle" type="button">Dark</button>
                 <button class="btn btn-outline" type="button" onclick="loadSampleConfiguration()">Load Sample</button>
+                <button class="btn btn-outline" type="button" onclick="loadDeadlockConfiguration()">Load Deadlock</button>
                 <button class="btn btn-primary" type="button" onclick="initializeSystem()">Initialize</button>
             </div>
         </div>
@@ -63,6 +64,18 @@
             <div class="summary-item">
                 <span>Step</span>
                 <strong id="stepLabel">0 / 0</strong>
+            </div>
+        </section>
+
+        <section class="incident-banner" id="incidentBanner" hidden>
+            <div>
+                <span class="eyebrow" id="incidentEyebrow">Runtime Event</span>
+                <h2 id="incidentTitle">System paused</h2>
+                <p id="incidentMessage">Review the current state before continuing.</p>
+            </div>
+            <div class="incident-actions">
+                <button class="btn btn-outline" type="button" onclick="togglePanel('recoveryPanel', true)">Open Recovery</button>
+                <button class="btn btn-primary" id="incidentResumeBtn" type="button" onclick="resumeSimulation()">Resume</button>
             </div>
         </section>
 
@@ -219,6 +232,11 @@
                 <p class="empty-state">No events yet.</p>
             </div>
         </section>
+
+        <footer class="app-footer">
+            <span>Dynamic Banker's Algorithm Simulator</span>
+            <span>Safe state analysis, runtime fault modeling, and recovery visualization.</span>
+        </footer>
     </main>
 
     <script src="script.js"></script>
