@@ -11,6 +11,10 @@ class Simulation
 {
 private:
     SystemState state;
+    vector<vector<int>> initialAllocation;
+    vector<vector<int>> initialMaximum;
+    vector<int> initialAvailable;
+    vector<int> initialTotalResources;
     Banker banker;
     FaultEngine faultEngine;
     RecoveryEngine recoveryEngine;

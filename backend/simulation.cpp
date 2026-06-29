@@ -46,6 +46,10 @@ bool Simulation::initialize(int processCount, int resourceCount,
     state.maximum = maximum;
     state.available = available;
     state.totalResources = available;
+    initialAllocation = allocation;
+    initialMaximum = maximum;
+    initialAvailable = available;
+    initialTotalResources = available;
 
     // Initialize need matrix
     state.need.assign(processCount, vector<int>(resourceCount));
@@ -92,6 +96,7 @@ bool Simulation::initializeWithTotal(int processCount, int resourceCount,
         return false;
 
     state.totalResources = totalResources;
+    initialTotalResources = totalResources;
     return true;
 }
 
@@ -111,6 +116,11 @@ void Simulation::reset()
     state.recoveryHistory.clear();
     state.timeline.clear();
     timelineCounter = 0;
+    state.allocation = initialAllocation;
+    state.maximum = initialMaximum;
+    state.available = initialAvailable;
+    state.totalResources = initialTotalResources;
+    banker.calculateNeed(state);
 
     // Reset process statuses
     for (auto& process : state.processes)

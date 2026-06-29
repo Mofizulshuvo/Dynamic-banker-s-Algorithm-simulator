@@ -18,23 +18,37 @@
                 <div class="brand-mark">BA</div>
                 <div>
                     <h1>Dynamic Banker's Algorithm Simulator</h1>
-                    <p>Deadlock avoidance, fault injection, and recovery in one workspace.</p>
+                    <p>Deadlock avoidance, resource safety, fault injection, and recovery in one workspace.</p>
                 </div>
             </div>
             <div class="header-actions">
                 <button class="btn btn-ghost" id="themeToggle" type="button">Dark</button>
+                <button class="btn btn-outline" type="button" onclick="loadSampleConfiguration()">Load Sample</button>
                 <button class="btn btn-primary" type="button" onclick="initializeSystem()">Initialize</button>
             </div>
         </div>
     </header>
 
     <main class="container app-shell">
+        <section class="hero-panel">
+            <div class="hero-copy">
+                <span class="eyebrow">Operating Systems Lab</span>
+                <h2>Model safe resource allocation before deadlock happens.</h2>
+                <p id="statusMessage">Edit the configuration, initialize the system, then run or step through the sequence.</p>
+            </div>
+            <div class="hero-meter">
+                <span>System safety</span>
+                <strong id="safetyScore">Pending</strong>
+                <div class="bar large"><div class="bar-fill" id="safetyFill"></div></div>
+            </div>
+        </section>
+
         <section class="summary-band" aria-label="System summary">
-            <div class="summary-item">
+            <div class="summary-item" data-tone="server">
                 <span>Server</span>
                 <strong id="serverBadge">Checking</strong>
             </div>
-            <div class="summary-item">
+            <div class="summary-item" data-tone="state">
                 <span>State</span>
                 <strong id="stateBadge">Idle</strong>
             </div>
@@ -53,16 +67,13 @@
         </section>
 
         <section class="toolbar-panel">
-            <div class="toolbar-title">
-                <h2>Simulation Controls</h2>
-                <p id="statusMessage">Edit the configuration, initialize the system, then run or step through the sequence.</p>
-            </div>
             <div class="control-grid">
                 <button class="btn btn-success" id="runBtn" type="button" onclick="runSimulation()" disabled>Run</button>
                 <button class="btn btn-warning" id="pauseBtn" type="button" onclick="pauseSimulation()" disabled>Pause</button>
                 <button class="btn btn-success" id="resumeBtn" type="button" onclick="resumeSimulation()" disabled>Resume</button>
                 <button class="btn btn-info" id="stepBtn" type="button" onclick="stepSimulation()" disabled>Next Step</button>
-                <button class="btn btn-outline" type="button" onclick="resetSystem()">Reset</button>
+                <button class="btn btn-outline" type="button" onclick="resetSystem()">Reset Run</button>
+                <button class="btn btn-outline" type="button" onclick="newConfiguration()">New Config</button>
                 <button class="btn btn-danger" id="faultBtn" type="button" onclick="togglePanel('faultPanel')" disabled>Inject Fault</button>
                 <button class="btn btn-outline" id="recoverBtn" type="button" onclick="togglePanel('recoveryPanel')" disabled>Recovery</button>
             </div>
@@ -73,13 +84,21 @@
             </div>
         </section>
 
-        <section class="workspace-grid">
+        <section class="workspace-grid top-grid">
             <div class="panel">
                 <div class="panel-header">
                     <h2>Available Resources</h2>
                     <span class="muted">Available / Total</span>
                 </div>
                 <div class="resource-bars" id="resourceBars"></div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-header">
+                    <h2>Configuration Health</h2>
+                    <span class="muted" id="validationSummary">Waiting</span>
+                </div>
+                <div class="validation-list" id="validationList"></div>
             </div>
 
             <div class="panel">
@@ -97,7 +116,7 @@
             <div class="panel-header split">
                 <div>
                     <h2>Configuration</h2>
-                    <p class="muted">Allocation must never exceed the maximum claim for any process.</p>
+                    <p class="muted">Build the allocation, maximum claim, available pool, and total resource model.</p>
                 </div>
                 <div class="compact-actions">
                     <button class="btn btn-sm btn-outline" type="button" onclick="addProcess()">Add Process</button>
@@ -107,7 +126,15 @@
                 </div>
             </div>
 
-            <div class="matrix-layout">
+            <div class="matrix-tabs" role="tablist" aria-label="Configuration views">
+                <button class="tab active" type="button" onclick="setMatrixView('all', this)">All</button>
+                <button class="tab" type="button" onclick="setMatrixView('resources', this)">Resources</button>
+                <button class="tab" type="button" onclick="setMatrixView('allocation', this)">Allocation</button>
+                <button class="tab" type="button" onclick="setMatrixView('maximum', this)">Maximum</button>
+                <button class="tab" type="button" onclick="setMatrixView('need', this)">Need</button>
+            </div>
+
+            <div class="matrix-layout" id="matrixLayout">
                 <div class="matrix-block">
                     <h3>Resource Pool</h3>
                     <div class="matrix-container">

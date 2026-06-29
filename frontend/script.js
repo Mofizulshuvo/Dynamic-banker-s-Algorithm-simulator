@@ -32,6 +32,7 @@ const defaultState = {
 let state = structuredClone(defaultState);
 let runTimer = null;
 let serverOnline = false;
+let matrixView = "all";
 
 document.addEventListener("DOMContentLoaded", () => {
     setupThemeToggle();
@@ -66,7 +67,9 @@ async function checkServerStatus() {
 }
 
 function updateServerBadge() {
-    document.getElementById("serverBadge").textContent = serverOnline ? "Online" : "Offline";
+    const badge = document.getElementById("serverBadge");
+    badge.textContent = serverOnline ? "Online" : "Offline";
+    badge.style.color = serverOnline ? "var(--success)" : "var(--danger)";
 }
 
 async function apiCall(endpoint, method = "GET", body = null, quiet = false) {
@@ -121,6 +124,14 @@ async function initializeSystem() {
         enableControls(true);
         showToast("System initialized.", "success");
     }
+}
+
+function loadSampleConfiguration() {
+    stopAutoRun();
+    state = structuredClone(defaultState);
+    renderAll();
+    enableControls(false);
+    showToast("Classic sample configuration loaded.", "success");
 }
 
 async function runSimulation() {
@@ -200,6 +211,20 @@ async function resetSystem() {
         renderAll();
         enableControls(false);
     }
+}
+
+function newConfiguration() {
+    stopAutoRun();
+    state.initialized = false;
+    state.simulationState = "IDLE";
+    state.currentStep = 0;
+    state.serverProcesses = [];
+    state.safeSequence = [];
+    state.timeline = [];
+    state.need = [];
+    renderAll();
+    enableControls(false);
+    showToast("Configuration is editable again.", "info");
 }
 
 function startAutoRun() {
@@ -367,6 +392,7 @@ function updateUIFromState(serverState) {
 function renderAll() {
     renderSummary();
     renderResourceBars();
+    renderValidation();
     renderResourceTable();
     renderAllocation();
     renderMax();
@@ -374,6 +400,7 @@ function renderAll() {
     renderProcessCards();
     renderSafeSequence();
     renderTimeline();
+    applyMatrixView();
 }
 
 function renderSummary() {
@@ -384,6 +411,39 @@ function renderSummary() {
     document.getElementById("statusMessage").textContent = getStatusMessage();
     document.getElementById("sequenceHint").textContent = state.safeSequence.length ? "Calculated by safety check" : "No sequence";
     document.getElementById("speedValue").textContent = `${state.simulationSpeed} ms`;
+    renderSafetyScore();
+}
+
+function renderSafetyScore() {
+    const score = document.getElementById("safetyScore");
+    const fill = document.getElementById("safetyFill");
+    const validation = getValidationMessages();
+    const isSafe = state.simulationState === "RUNNING" || state.simulationState === "INITIALIZED" || state.simulationState === "COMPLETED";
+    const hasSequence = state.safeSequence.length > 0;
+    const hasErrors = validation.some(item => item.type === "error");
+    let label = "Pending";
+    let percent = 34;
+    let className = "";
+
+    if (hasErrors) {
+        label = "Invalid";
+        percent = 18;
+        className = "danger";
+    } else if (state.simulationState === "UNSAFE") {
+        label = "Unsafe";
+        percent = 28;
+        className = "danger";
+    } else if (hasSequence || isSafe) {
+        label = "Safe";
+        percent = 100;
+    } else if (state.initialized) {
+        label = "Ready";
+        percent = 72;
+    }
+
+    score.textContent = label;
+    fill.style.width = `${percent}%`;
+    fill.className = `bar-fill ${className}`;
 }
 
 function renderResourceBars() {
@@ -406,6 +466,27 @@ function renderResourceBars() {
             </div>
         `;
     }).join("");
+}
+
+function renderValidation() {
+    const messages = getValidationMessages();
+    const summary = document.getElementById("validationSummary");
+    const list = document.getElementById("validationList");
+    const hasErrors = messages.some(item => item.type === "error");
+    const warnings = messages.filter(item => item.type === "warning").length;
+
+    summary.textContent = hasErrors ? "Needs attention" : warnings ? "Review suggested" : "Ready";
+    summary.style.color = hasErrors ? "var(--danger)" : warnings ? "var(--warning)" : "var(--success)";
+
+    list.innerHTML = messages.map(item => `
+        <div class="validation-item ${item.type}">
+            <div class="validation-dot"></div>
+            <div>
+                <strong>${item.title}</strong>
+                <p class="muted">${item.message}</p>
+            </div>
+        </div>
+    `).join("");
 }
 
 function renderResourceTable() {
@@ -464,7 +545,8 @@ function renderNeed() {
 }
 
 function cellInput(value, handler) {
-    return `<td><input type="number" min="0" value="${Number(value) || 0}" onchange="${handler}"></td>`;
+    const disabled = state.initialized ? "disabled" : "";
+    return `<td><input type="number" min="0" value="${Number(value) || 0}" onchange="${handler}" ${disabled}></td>`;
 }
 
 function renderProcessCards() {
@@ -565,9 +647,35 @@ function updateTotal(resourceIndex, value) {
 
 function guardEdit() {
     if (!state.initialized) return false;
-    showToast("Reset before editing configuration.", "warning");
+    showToast("Use New Config before editing matrices.", "warning");
     renderAll();
     return true;
+}
+
+function setMatrixView(view, button) {
+    matrixView = view;
+    document.querySelectorAll(".matrix-tabs .tab").forEach(tab => tab.classList.remove("active"));
+    button.classList.add("active");
+    applyMatrixView();
+}
+
+function applyMatrixView() {
+    const blocks = Array.from(document.querySelectorAll(".matrix-block"));
+    const viewMap = {
+        all: ["Resource Pool", "Allocation Matrix", "Maximum Matrix", "Need Matrix"],
+        resources: ["Resource Pool"],
+        allocation: ["Allocation Matrix"],
+        maximum: ["Maximum Matrix"],
+        need: ["Need Matrix"]
+    };
+    const visible = viewMap[matrixView] || viewMap.all;
+
+    blocks.forEach(block => {
+        const title = block.querySelector("h3")?.textContent || "";
+        block.classList.toggle("is-hidden", !visible.includes(title));
+    });
+
+    document.getElementById("matrixLayout").style.gridTemplateColumns = matrixView === "all" ? "" : "1fr";
 }
 
 function addProcess() {
@@ -625,22 +733,54 @@ function removeLastResource() {
 }
 
 function validateConfiguration() {
+    const error = getValidationMessages().find(item => item.type === "error");
+    return error ? { ok: false, message: error.message } : { ok: true };
+}
+
+function getValidationMessages() {
+    const messages = [];
+
     for (let i = 0; i < state.processes.length; i++) {
         for (let j = 0; j < state.resources.length; j++) {
             if (state.allocation[i][j] > state.max[i][j]) {
-                return { ok: false, message: `P${i} allocation cannot exceed maximum for resource ${state.resources[j]}.` };
+                messages.push({
+                    type: "error",
+                    title: `P${i} exceeds maximum`,
+                    message: `Allocation for resource ${state.resources[j]} is greater than the maximum claim.`
+                });
             }
         }
     }
 
     for (let j = 0; j < state.resources.length; j++) {
         const allocated = state.allocation.reduce((sum, row) => sum + row[j], 0);
-        if (allocated + state.available[j] > state.totalResources[j]) {
-            return { ok: false, message: `Resource ${state.resources[j]} total must cover allocated plus available units.` };
+        const total = state.totalResources[j];
+        const available = state.available[j];
+
+        if (allocated + available > total) {
+            messages.push({
+                type: "error",
+                title: `Resource ${state.resources[j]} is overcommitted`,
+                message: `Allocated (${allocated}) plus available (${available}) exceeds total (${total}).`
+            });
+        } else if (total === 0) {
+            messages.push({
+                type: "warning",
+                title: `Resource ${state.resources[j]} has zero capacity`,
+                message: "This resource type cannot be granted until its total capacity is increased."
+            });
         }
     }
 
-    return { ok: true };
+    if (!messages.length) {
+        messages.push({
+            type: "success",
+            title: "Configuration is internally consistent",
+            message: "The resource pool covers current allocations and every process respects its maximum claim."
+        });
+    }
+
+    return messages.slice(0, 5);
 }
 
 function enableControls(enabled) {
